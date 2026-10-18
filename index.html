@@ -19,6 +19,8 @@
   .sun { color: #d33; }
   .sat { color: #0a60d3; }
   .tag { display: block; margin-top: 2px; font-size: 10px; color: #fff; border-radius: 4px; padding: 1px 2px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .etag { display: block; margin-top: 2px; font-size: 10px; color: #111; background: #f1f5f9; border-left: 3px solid #0ea5e9; border-radius: 2px; padding: 1px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .more { display: block; margin-top: 2px; font-size: 10px; color: #666; text-align: center; }
   .memo-mark { font-size: 10px; margin-left: 2px; }
   .todo-dot { display: inline-block; width: 7px; height: 7px; background: #0a84ff; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
   .panel { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; }
@@ -34,6 +36,7 @@
   .pcard:last-child { border-bottom: none; }
   .del { border: none; background: #fee; color: #c00; border-radius: 6px; padding: 6px 10px; }
   .add { border: none; background: #0a84ff; color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 14px; margin-top: 4px; }
+  .add:disabled { background: #bbb; }
   .add.sub { background: #e5e7eb; color: #111; }
   .small { font-size: 12px; color: #666; margin: 4px 0 0; }
   #memoText { width: 100%; box-sizing: border-box; min-height: 90px; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; resize: vertical; }
@@ -46,6 +49,15 @@
   .todo-form { display: flex; gap: 6px; margin-top: 8px; }
   .todo-form input { flex: 1; min-width: 0; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
   .todo-form button { margin-top: 0; }
+  .ev-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
+  .ev-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .ev-time { font-size: 13px; color: #666; flex-shrink: 0; }
+  .ev-title { flex: 1; font-size: 15px; word-break: break-all; }
+  .ev-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+  .ev-form input[type=text] { flex: 1 1 100%; min-width: 0; box-sizing: border-box; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .ev-form input[type=time] { font-size: 14px; }
+  .ev-form input[type=color] { width: 36px; height: 32px; border: none; padding: 0; background: none; }
+  .ev-form .add { margin-top: 0; }
   .link-btn { border: none; background: none; color: #0a84ff; font-size: 13px; padding: 0; margin-left: 8px; }
   .btns { display: flex; flex-wrap: wrap; gap: 6px; }
   .btns .add { margin-top: 0; }
@@ -69,6 +81,20 @@
   <h2 id="assignTitle">日付をタップしてください</h2>
   <div class="chips" id="chips"></div>
   <p class="small" id="assignHint" style="display:none">複数選べます(かけもちOK)。もう一度タップで解除。</p>
+</div>
+
+<div class="panel">
+  <h2 id="eventTitle">予定</h2>
+  <div id="eventList"></div>
+  <div class="ev-form">
+    <input type="text" id="evTitle" placeholder="予定のタイトル" disabled>
+    <input type="time" id="evStart" disabled>
+    <span>〜</span>
+    <input type="time" id="evEnd" disabled>
+    <input type="color" id="evColor" value="#0ea5e9" disabled>
+    <button class="add" id="evAdd" disabled>追加</button>
+  </div>
+  <p class="small">時間は空欄でもOKです(終日の予定になります)。</p>
 </div>
 
 <div class="panel">
@@ -120,6 +146,7 @@ var patterns = [];
 var shifts = {};   // { 'YYYY-MM-DD': ['p1','p2'] }
 var memos = {};
 var todos = [];
+var events = [];   // [{ id, date, title, start, end, color }]
 
 function normalizeShifts(obj) {
   var out = {};
@@ -130,6 +157,21 @@ function normalizeShifts(obj) {
   }
   return out;
 }
+function normalizeEvents(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(function (e) {
+    return e && typeof e === 'object' && typeof e.date === 'string' && typeof e.title === 'string';
+  }).map(function (e) {
+    return {
+      id: String(e.id || ('e' + Date.now() + Math.random())),
+      date: e.date,
+      title: e.title,
+      start: typeof e.start === 'string' ? e.start : '',
+      end: typeof e.end === 'string' ? e.end : '',
+      color: typeof e.color === 'string' ? e.color : '#0ea5e9'
+    };
+  });
+}
 
 function load() {
   try {
@@ -137,10 +179,12 @@ function load() {
     var s = localStorage.getItem('shift_assign');
     var m = localStorage.getItem('shift_memos');
     var t = localStorage.getItem('shift_todos');
+    var ev = localStorage.getItem('shift_events');
     if (p) patterns = JSON.parse(p);
     if (s) shifts = normalizeShifts(JSON.parse(s));
     if (m) memos = JSON.parse(m);
     if (t) todos = JSON.parse(t);
+    if (ev) events = normalizeEvents(JSON.parse(ev));
   } catch (e) {}
   if (!patterns.length) {
     patterns = [
@@ -156,6 +200,7 @@ function save() {
     localStorage.setItem('shift_assign', JSON.stringify(shifts));
     localStorage.setItem('shift_memos', JSON.stringify(memos));
     localStorage.setItem('shift_todos', JSON.stringify(todos));
+    localStorage.setItem('shift_events', JSON.stringify(events));
   } catch (e) {}
 }
 
@@ -177,6 +222,15 @@ function dayPatterns(key) {
   list.sort(function (a, b) {
     var x = a.start || '99:99';
     var y = b.start || '99:99';
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+  return list;
+}
+function dayEvents(key) {
+  var list = events.filter(function (e) { return e.date === key; });
+  list.sort(function (a, b) {
+    var x = a.start || '00:00';
+    var y = b.start || '00:00';
     return x < y ? -1 : x > y ? 1 : 0;
   });
   return list;
@@ -245,11 +299,27 @@ function renderCalendar() {
       cell.appendChild(tag);
     });
 
+    var evs = dayEvents(key);
+    evs.slice(0, 2).forEach(function (ev) {
+      var et = document.createElement('span');
+      et.className = 'etag';
+      et.style.borderLeftColor = ev.color;
+      et.textContent = (ev.start ? ev.start + ' ' : '') + ev.title;
+      cell.appendChild(et);
+    });
+    if (evs.length > 2) {
+      var more = document.createElement('span');
+      more.className = 'more';
+      more.textContent = '+' + (evs.length - 2) + '件';
+      cell.appendChild(more);
+    }
+
     cell.setAttribute('data-key', key);
     cell.onclick = function () {
       selected = this.getAttribute('data-key');
       renderCalendar();
       renderAssign();
+      renderEvents();
       renderMemo();
       renderTodos();
     };
@@ -302,6 +372,63 @@ function renderAssign() {
     renderAssign();
   };
   chips.appendChild(clear);
+}
+
+function renderEvents() {
+  var title = document.getElementById('eventTitle');
+  var list = document.getElementById('eventList');
+  var ids = ['evTitle', 'evStart', 'evEnd', 'evColor', 'evAdd'];
+  list.innerHTML = '';
+  ids.forEach(function (id) { document.getElementById(id).disabled = !selected; });
+  if (!selected) {
+    title.textContent = '予定';
+    var hint = document.createElement('div');
+    hint.className = 'todo-empty';
+    hint.textContent = '日付をタップすると予定を追加できます';
+    list.appendChild(hint);
+    return;
+  }
+  title.textContent = selected + ' の予定';
+  var evs = dayEvents(selected);
+  if (!evs.length) {
+    var none = document.createElement('div');
+    none.className = 'todo-empty';
+    none.textContent = '予定はありません';
+    list.appendChild(none);
+    return;
+  }
+  evs.forEach(function (ev) {
+    var item = document.createElement('div');
+    item.className = 'ev-item';
+
+    var dot = document.createElement('span');
+    dot.className = 'ev-dot';
+    dot.style.background = ev.color;
+
+    var time = document.createElement('span');
+    time.className = 'ev-time';
+    time.textContent = ev.start ? (ev.start + (ev.end ? '-' + ev.end : '')) : '終日';
+
+    var t = document.createElement('span');
+    t.className = 'ev-title';
+    t.textContent = ev.title;
+
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '削除';
+    del.onclick = function () {
+      events = events.filter(function (x) { return x.id !== ev.id; });
+      save();
+      renderCalendar();
+      renderEvents();
+    };
+
+    item.appendChild(dot);
+    item.appendChild(time);
+    item.appendChild(t);
+    item.appendChild(del);
+    list.appendChild(item);
+  });
 }
 
 function renderMemo() {
@@ -437,10 +564,34 @@ function renderPatterns() {
 function renderAll() {
   renderCalendar();
   renderAssign();
+  renderEvents();
   renderMemo();
   renderTodos();
   renderPatterns();
 }
+
+/* ---------- 予定の追加 ---------- */
+document.getElementById('evAdd').onclick = function () {
+  if (!selected) return;
+  var titleEl = document.getElementById('evTitle');
+  var text = titleEl.value.trim();
+  if (!text) {
+    alert('予定のタイトルを入力してください');
+    return;
+  }
+  events.push({
+    id: 'e' + Date.now(),
+    date: selected,
+    title: text,
+    start: document.getElementById('evStart').value,
+    end: document.getElementById('evEnd').value,
+    color: document.getElementById('evColor').value
+  });
+  titleEl.value = '';
+  save();
+  renderCalendar();
+  renderEvents();
+};
 
 /* ---------- バックアップ ---------- */
 function showMsg(text, ok) {
@@ -452,12 +603,13 @@ function showMsg(text, ok) {
 function buildBackup() {
   return JSON.stringify({
     app: 'shift-app',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     patterns: patterns,
     shifts: shifts,
     memos: memos,
-    todos: todos
+    todos: todos,
+    events: events
   });
 }
 
@@ -483,9 +635,11 @@ function restoreFrom(text) {
     return;
   }
   var newShifts = normalizeShifts(data.shifts);
+  var newEvents = normalizeEvents(data.events);
   var msg = 'バックアップを復元します。今のデータは上書きされます。\n\n' +
     'シフトの種類:' + data.patterns.length + '件\n' +
     'シフト:' + Object.keys(newShifts).length + '日分\n' +
+    '予定:' + newEvents.length + '件\n' +
     'メモ:' + Object.keys(data.memos).length + '件\n' +
     'ToDo:' + data.todos.length + '件\n\nよろしいですか?';
   if (!confirm(msg)) {
@@ -496,6 +650,7 @@ function restoreFrom(text) {
   shifts = newShifts;
   memos = data.memos;
   todos = data.todos;
+  events = newEvents;
   selected = null;
   save();
   renderAll();
@@ -610,6 +765,7 @@ document.getElementById('todoUnselect').onclick = function () {
   selected = null;
   renderCalendar();
   renderAssign();
+  renderEvents();
   renderMemo();
   renderTodos();
 };
