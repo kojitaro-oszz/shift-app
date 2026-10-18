@@ -32,6 +32,7 @@
   .row input[type=color] { width: 36px; height: 32px; border: none; padding: 0; background: none; }
   .del { border: none; background: #fee; color: #c00; border-radius: 6px; padding: 6px 10px; }
   .add { border: none; background: #0a84ff; color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 14px; margin-top: 4px; }
+  .add.sub { background: #e5e7eb; color: #111; }
   .small { font-size: 12px; color: #666; margin: 4px 0 0; }
   #memoText { width: 100%; box-sizing: border-box; min-height: 90px; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; resize: vertical; }
   #memoText:disabled { background: #f0f0f0; }
@@ -44,6 +45,13 @@
   .todo-form input { flex: 1; min-width: 0; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
   .todo-form button { margin-top: 0; }
   .link-btn { border: none; background: none; color: #0a84ff; font-size: 13px; padding: 0; margin-left: 8px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btns .add { margin-top: 0; }
+  .sep { border: none; border-top: 1px solid #eee; margin: 12px 0; }
+  #backupText { width: 100%; box-sizing: border-box; min-height: 70px; font-size: 14px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-family: monospace; margin-top: 8px; }
+  #backupMsg { font-size: 13px; margin: 8px 0 0; min-height: 18px; }
+  #backupMsg.ok { color: #0a7d3b; }
+  #backupMsg.ng { color: #c00; }
 </style>
 </head>
 <body>
@@ -80,6 +88,23 @@
   <div id="patterns"></div>
   <button class="add" id="addPattern">+ 種類を追加</button>
   <p class="small">名前・色・時間を変更すると自動保存されます</p>
+</div>
+
+<div class="panel">
+  <h2>バックアップ</h2>
+  <div class="btns">
+    <button class="add" id="bkFile">ファイルで保存</button>
+    <button class="add sub" id="bkCopy">テキストをコピー</button>
+  </div>
+  <hr class="sep">
+  <div class="btns">
+    <button class="add" id="rsFileBtn">ファイルから復元</button>
+    <button class="add sub" id="rsTextBtn">テキストから復元</button>
+  </div>
+  <input type="file" id="rsFile" accept=".json,application/json,text/plain" style="display:none">
+  <textarea id="backupText" placeholder="コピーしたテキストを貼り付けてから「テキストから復元」を押します"></textarea>
+  <p id="backupMsg"></p>
+  <p class="small">復元すると、今のデータは上書きされます。復元の前に、一度バックアップを取っておくと安心です。</p>
 </div>
 
 <script>
@@ -358,6 +383,146 @@ function renderAll() {
   renderTodos();
   renderPatterns();
 }
+
+/* ---------- バックアップ ---------- */
+function showMsg(text, ok) {
+  var el = document.getElementById('backupMsg');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'ng';
+}
+
+function buildBackup() {
+  return JSON.stringify({
+    app: 'shift-app',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    patterns: patterns,
+    shifts: shifts,
+    memos: memos,
+    todos: todos
+  });
+}
+
+function backupFileName() {
+  var n = new Date();
+  return 'shift-backup-' + n.getFullYear() + pad(n.getMonth() + 1) + pad(n.getDate()) + '.json';
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function restoreFrom(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    showMsg('データを読み取れませんでした。バックアップのテキストを正しく貼り付けてください。', false);
+    return;
+  }
+  if (!data || data.app !== 'shift-app' || !Array.isArray(data.patterns) || !isPlainObject(data.shifts) || !isPlainObject(data.memos) || !Array.isArray(data.todos)) {
+    showMsg('このアプリのバックアップではありません。', false);
+    return;
+  }
+  var msg = 'バックアップを復元します。今のデータは上書きされます。\n\n' +
+    'シフトの種類:' + data.patterns.length + '件\n' +
+    'シフト:' + Object.keys(data.shifts).length + '日分\n' +
+    'メモ:' + Object.keys(data.memos).length + '件\n' +
+    'ToDo:' + data.todos.length + '件\n\nよろしいですか?';
+  if (!confirm(msg)) {
+    showMsg('復元をキャンセルしました。', false);
+    return;
+  }
+  patterns = data.patterns;
+  shifts = data.shifts;
+  memos = data.memos;
+  todos = data.todos;
+  selected = null;
+  save();
+  renderAll();
+  document.getElementById('backupText').value = '';
+  showMsg('復元しました。', true);
+}
+
+document.getElementById('bkFile').onclick = function () {
+  var json = buildBackup();
+  var name = backupFileName();
+  try {
+    var file = new File([json], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).then(function () {
+        showMsg('共有メニューから保存先を選んでください。', true);
+      }).catch(function () {
+        showMsg('保存がキャンセルされました。', false);
+      });
+      return;
+    }
+  } catch (e) {}
+  try {
+    var blob = new Blob([json], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    showMsg('ダウンロードしました。「ファイル」アプリを確認してください。', true);
+  } catch (e) {
+    showMsg('ファイル保存に失敗しました。「テキストをコピー」を使ってください。', false);
+  }
+};
+
+document.getElementById('bkCopy').onclick = function () {
+  var json = buildBackup();
+  var ta = document.getElementById('backupText');
+  ta.value = json;
+  function fallback() {
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, json.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    if (ok) showMsg('コピーしました。メモアプリなどに貼り付けて保管してください。', true);
+    else showMsg('自動コピーできませんでした。下の欄を長押しして「すべてを選択」→「コピー」してください。', false);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(json).then(function () {
+      showMsg('コピーしました。メモアプリなどに貼り付けて保管してください。', true);
+    }).catch(fallback);
+  } else {
+    fallback();
+  }
+};
+
+document.getElementById('rsFileBtn').onclick = function () {
+  document.getElementById('rsFile').click();
+};
+document.getElementById('rsFile').onchange = function () {
+  var f = this.files && this.files[0];
+  var input = this;
+  if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    restoreFrom(String(reader.result));
+    input.value = '';
+  };
+  reader.onerror = function () {
+    showMsg('ファイルを読み込めませんでした。', false);
+    input.value = '';
+  };
+  reader.readAsText(f);
+};
+document.getElementById('rsTextBtn').onclick = function () {
+  var text = document.getElementById('backupText').value.trim();
+  if (!text) {
+    showMsg('先に、バックアップのテキストを下の欄に貼り付けてください。', false);
+    return;
+  }
+  restoreFrom(text);
+};
+/* ---------- /バックアップ ---------- */
 
 document.getElementById('memoText').oninput = function () {
   if (!selected) return;
