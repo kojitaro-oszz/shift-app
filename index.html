@@ -20,6 +20,7 @@
   .sat { color: #0a60d3; }
   .tag { display: block; margin-top: 2px; font-size: 10px; color: #fff; border-radius: 4px; padding: 1px 2px; text-align: center; white-space: nowrap; overflow: hidden; }
   .memo-mark { font-size: 10px; margin-left: 2px; }
+  .todo-dot { display: inline-block; width: 7px; height: 7px; background: #0a84ff; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
   .panel { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; }
   .panel h2 { font-size: 15px; margin: 0 0 8px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -34,6 +35,15 @@
   .small { font-size: 12px; color: #666; margin: 4px 0 0; }
   #memoText { width: 100%; box-sizing: border-box; min-height: 90px; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; resize: vertical; }
   #memoText:disabled { background: #f0f0f0; }
+  .todo-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
+  .todo-item input[type=checkbox] { width: 22px; height: 22px; flex-shrink: 0; }
+  .todo-item span { flex: 1; font-size: 15px; word-break: break-all; }
+  .todo-item.done span { text-decoration: line-through; color: #999; }
+  .todo-empty { color: #999; font-size: 14px; padding: 6px 0; }
+  .todo-form { display: flex; gap: 6px; margin-top: 8px; }
+  .todo-form input { flex: 1; min-width: 0; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+  .todo-form button { margin-top: 0; }
+  .link-btn { border: none; background: none; color: #0a84ff; font-size: 13px; padding: 0; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -57,6 +67,15 @@
 </div>
 
 <div class="panel">
+  <h2><span id="todoTitle">ToDo(日付なし)</span><button class="link-btn" id="todoUnselect" style="display:none">日付の選択を外す</button></h2>
+  <div id="todoList"></div>
+  <div class="todo-form">
+    <input type="text" id="todoInput" placeholder="やることを入力">
+    <button class="add" id="todoAdd">追加</button>
+  </div>
+</div>
+
+<div class="panel">
   <h2>シフトの種類</h2>
   <div id="patterns"></div>
   <button class="add" id="addPattern">+ 種類を追加</button>
@@ -72,15 +91,18 @@ var dows = ['日','月','火','水','木','金','土'];
 var patterns = [];
 var shifts = {};
 var memos = {};
+var todos = [];
 
 function load() {
   try {
     var p = localStorage.getItem('shift_patterns');
     var s = localStorage.getItem('shift_assign');
     var m = localStorage.getItem('shift_memos');
+    var t = localStorage.getItem('shift_todos');
     if (p) patterns = JSON.parse(p);
     if (s) shifts = JSON.parse(s);
     if (m) memos = JSON.parse(m);
+    if (t) todos = JSON.parse(t);
   } catch (e) {}
   if (!patterns.length) {
     patterns = [
@@ -95,6 +117,7 @@ function save() {
     localStorage.setItem('shift_patterns', JSON.stringify(patterns));
     localStorage.setItem('shift_assign', JSON.stringify(shifts));
     localStorage.setItem('shift_memos', JSON.stringify(memos));
+    localStorage.setItem('shift_todos', JSON.stringify(todos));
   } catch (e) {}
 }
 
@@ -102,6 +125,12 @@ function pad(n) { return n < 10 ? '0' + n : '' + n; }
 function findPattern(id) {
   for (var i = 0; i < patterns.length; i++) if (patterns[i].id === id) return patterns[i];
   return null;
+}
+function hasOpenTodo(key) {
+  for (var i = 0; i < todos.length; i++) {
+    if (todos[i].date === key && !todos[i].done) return true;
+  }
+  return false;
 }
 
 function renderCalendar() {
@@ -147,6 +176,11 @@ function renderCalendar() {
       mark.textContent = '📝';
       cell.appendChild(mark);
     }
+    if (hasOpenTodo(key)) {
+      var dot = document.createElement('span');
+      dot.className = 'todo-dot';
+      cell.appendChild(dot);
+    }
 
     var pat = shifts[key] ? findPattern(shifts[key]) : null;
     if (pat) {
@@ -163,6 +197,7 @@ function renderCalendar() {
       renderCalendar();
       renderAssign();
       renderMemo();
+      renderTodos();
     };
     grid.appendChild(cell);
   }
@@ -220,6 +255,55 @@ function renderMemo() {
   ta.value = memos[selected] || '';
 }
 
+function renderTodos() {
+  var key = selected || '';
+  document.getElementById('todoTitle').textContent = selected ? 'ToDo(' + selected + ')' : 'ToDo(日付なし)';
+  document.getElementById('todoUnselect').style.display = selected ? 'inline' : 'none';
+  var list = document.getElementById('todoList');
+  list.innerHTML = '';
+  var count = 0;
+  todos.forEach(function (t) {
+    if (t.date !== key) return;
+    count++;
+    var item = document.createElement('div');
+    item.className = 'todo-item' + (t.done ? ' done' : '');
+
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = t.done;
+    cb.onchange = function () {
+      t.done = this.checked;
+      save();
+      renderCalendar();
+      renderTodos();
+    };
+
+    var label = document.createElement('span');
+    label.textContent = t.text;
+
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '削除';
+    del.onclick = function () {
+      todos = todos.filter(function (x) { return x.id !== t.id; });
+      save();
+      renderCalendar();
+      renderTodos();
+    };
+
+    item.appendChild(cb);
+    item.appendChild(label);
+    item.appendChild(del);
+    list.appendChild(item);
+  });
+  if (!count) {
+    var empty = document.createElement('div');
+    empty.className = 'todo-empty';
+    empty.textContent = 'ToDoはありません';
+    list.appendChild(empty);
+  }
+}
+
 function renderPatterns() {
   var box = document.getElementById('patterns');
   box.innerHTML = '';
@@ -271,6 +355,7 @@ function renderAll() {
   renderCalendar();
   renderAssign();
   renderMemo();
+  renderTodos();
   renderPatterns();
 }
 
@@ -281,6 +366,28 @@ document.getElementById('memoText').oninput = function () {
   else delete memos[selected];
   save();
   renderCalendar();
+};
+
+function addTodo() {
+  var input = document.getElementById('todoInput');
+  var text = input.value.trim();
+  if (!text) return;
+  todos.push({ id: 't' + Date.now(), text: text, done: false, date: selected || '' });
+  input.value = '';
+  save();
+  renderCalendar();
+  renderTodos();
+}
+document.getElementById('todoAdd').onclick = addTodo;
+document.getElementById('todoInput').onkeydown = function (e) {
+  if (e.key === 'Enter') addTodo();
+};
+document.getElementById('todoUnselect').onclick = function () {
+  selected = null;
+  renderCalendar();
+  renderAssign();
+  renderMemo();
+  renderTodos();
 };
 
 document.getElementById('prev').onclick = function () {
