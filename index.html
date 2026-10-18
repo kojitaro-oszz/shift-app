@@ -604,5 +604,198 @@ var _rsM=renderSum;
 renderSum=function(){_rsM();renderMonth()};
 renderMonth();
 /* ===== /第11段階 ===== */
+/* ===== 第12段階:シフトの一括入力 ===== */
+var bCss=document.createElement('style');
+bCss.textContent=`
+.day.msel{box-shadow:inset 0 0 0 3px var(--m);background:var(--sel)}
+#mbar{display:none;position:fixed;left:8px;right:8px;bottom:8px;z-index:9;background:var(--solid);color:var(--d);border-radius:18px;padding:10px;box-shadow:0 2px 16px rgba(0,0,0,.3)}
+body.msel #mbar{display:block}
+body.msel{padding-bottom:240px}
+body.idx.msel #tabbar{display:none}
+#mbar .chipscroll{display:flex;gap:6px;overflow-x:auto;padding:6px 0}
+#mbar .chipscroll .chip{flex-shrink:0;white-space:nowrap}
+.bulk input[type=date]{font-size:16px;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--solid);color:var(--d)}
+.fb.sm{padding:calc(5px*var(--bs)) calc(10px*var(--bs))}
+`;
+document.head.appendChild(bCss);
+
+var bulkPats=[],bulkMode='add',bulkTab='range',bulkWd=[],bulkFrom='',bulkTo='',bulkMsg='',bulkMsgOk=true,bulkUndo=null,multiMode=false,msel={};
+function dkey(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function setRangeToMonth(){var y=cur.getFullYear(),m=cur.getMonth();bulkFrom=dkey(new Date(y,m,1));bulkTo=dkey(new Date(y,m+1,0))}
+setRangeToMonth();
+
+function setMsg(t,ok){bulkMsg=t;bulkMsgOk=ok;renderBulk();renderBar()}
+
+function rangeKeys(){
+  var re=/^\d{4}-\d{2}-\d{2}$/;
+  if(!re.test(bulkFrom)||!re.test(bulkTo))return{keys:[],err:'開始日と終了日を入れてください。'};
+  var a=new Date(+bulkFrom.slice(0,4),+bulkFrom.slice(5,7)-1,+bulkFrom.slice(8,10));
+  var b=new Date(+bulkTo.slice(0,4),+bulkTo.slice(5,7)-1,+bulkTo.slice(8,10));
+  if(a>b)return{keys:[],err:'終了日は開始日より後にしてください。'};
+  if((b-a)/86400000>400)return{keys:[],err:'期間は400日以内にしてください。'};
+  if(!bulkWd.length)return{keys:[],err:'曜日を選んでください。'};
+  var ks=[];
+  for(var d=new Date(a);d<=b;d.setDate(d.getDate()+1)){if(bulkWd.indexOf(d.getDay())>=0)ks.push(dkey(d))}
+  return{keys:ks,err:''};
+}
+function updPrev(){var el=$('bulkPrev');if(!el)return;var r=rangeKeys();el.textContent=r.err||('対象:'+r.keys.length+'日')}
+
+function applyBulk(keys){
+  var ids=bulkPats.filter(function(id){return findP(id)});
+  if(!keys.length){setMsg('対象の日がありません。',false);return false}
+  if(!ids.length){setMsg('入力するシフトを選んでください。',false);return false}
+  var nw={},chg=0,rep=0;
+  keys.forEach(function(k){
+    var old=shifts[k]||[],a;
+    if(bulkMode==='add'){a=old.slice();ids.forEach(function(id){if(a.indexOf(id)<0)a.push(id)})}
+    else a=ids.slice();
+    var same=a.length===old.length&&a.every(function(x){return old.indexOf(x)>=0});
+    if(!same){nw[k]=a;chg++;if(bulkMode==='rep'&&old.length)rep++}
+  });
+  if(!chg){setMsg('変更はありません(すでに入力済みです)。',false);return false}
+  var names=ids.map(function(id){return plabel(findP(id))}).join('・');
+  var t='「'+names+'」を'+chg+'日に'+(bulkMode==='add'?'追加':'置き換えて入力')+'します。';
+  if(rep)t+='\n(そのうち'+rep+'日は、今あるシフトが置き換わります)';
+  t+='\n\nよろしいですか?';
+  if(!confirm(t))return false;
+  var undo={};
+  for(var k in nw){undo[k]=shifts[k]?shifts[k].slice():null;shifts[k]=nw[k]}
+  bulkUndo=undo;
+  save();
+  bulkMsg=chg+'日に入力しました。';bulkMsgOk=true;
+  refresh();
+  renderBar();
+  return true;
+}
+function undoBulk(){
+  if(!bulkUndo)return;
+  var n=0;
+  for(var k in bulkUndo){if(bulkUndo[k])shifts[k]=bulkUndo[k];else delete shifts[k];n++}
+  bulkUndo=null;save();
+  bulkMsg=n+'日分を元に戻しました。';bulkMsgOk=true;
+  refresh();renderBar();
+}
+
+function chipsFor(inBar){
+  var box=E('div',{className:inBar?'chipscroll':'chips'});
+  patterns.forEach(function(p){
+    var on=bulkPats.indexOf(p.id)>=0;
+    box.appendChild(E('button',{className:'chip'+(on?'':' off'),style:'background:'+p.color,text:plabel(p)+(p.start?' '+p.start+'-'+p.end:''),onclick:function(){
+      var i=bulkPats.indexOf(p.id);if(i>=0)bulkPats.splice(i,1);else bulkPats.push(p.id);
+      renderBulk();renderBar();
+    }}));
+  });
+  return box;
+}
+function modeBtns(){
+  return [['add','追加'],['rep','置き換え']].map(function(o){
+    return E('button',{className:'fb sm'+(bulkMode===o[0]?' on':''),text:o[1],onclick:function(){bulkMode=o[0];renderBulk();renderBar()}});
+  });
+}
+
+function renderBulk(){
+  var b=$('bulkBody');if(!b)return;
+  b.innerHTML='';
+  bulkPats=bulkPats.filter(function(id){return findP(id)});
+  b.appendChild(E('h3',{text:'① 入力するシフト(複数OK)',style:'margin-top:0'}));
+  b.appendChild(chipsFor(false));
+  b.appendChild(E('h3',{text:'② 入力のしかた'}));
+  b.appendChild(E('div',{className:'chips'},modeBtns()));
+  b.appendChild(E('p',{className:'small',text:'追加=その日のシフトに加えます(かけもち向け)。置き換え=その日のシフトを、選んだものだけにします。'}));
+  b.appendChild(E('h3',{text:'③ 日付の選び方'}));
+  b.appendChild(E('div',{className:'chips'},[['range','曜日と期間'],['pick','カレンダーで選ぶ']].map(function(o){
+    return E('button',{className:'fb sm'+(bulkTab===o[0]?' on':''),text:o[1],onclick:function(){bulkTab=o[0];bulkMsg='';renderBulk()}});
+  })));
+
+  if(bulkTab==='range'){
+    b.appendChild(E('h3',{text:'曜日'}));
+    b.appendChild(E('div',{className:'chips'},dows.map(function(w,i){
+      return E('button',{className:'fb sm'+(bulkWd.indexOf(i)>=0?' on':''),text:w,onclick:function(){
+        var x=bulkWd.indexOf(i);if(x>=0)bulkWd.splice(x,1);else bulkWd.push(i);renderBulk();
+      }});
+    })));
+    b.appendChild(E('div',{className:'chips',style:'margin-top:6px'},[['平日',[1,2,3,4,5]],['土日',[0,6]],['毎日',[0,1,2,3,4,5,6]],['選択を外す',[]]].map(function(o){
+      return E('button',{className:'dchip',text:o[0],onclick:function(){bulkWd=o[1].slice();renderBulk()}});
+    })));
+    b.appendChild(E('h3',{text:'期間'}));
+    b.appendChild(E('div',{className:'row',style:'flex-wrap:wrap'},[
+      E('input',{type:'date',value:bulkFrom,onchange:function(){bulkFrom=this.value;updPrev()}}),
+      E('span',{text:'〜'}),
+      E('input',{type:'date',value:bulkTo,onchange:function(){bulkTo=this.value;updPrev()}})
+    ]));
+    b.appendChild(E('button',{className:'btn sub',text:'表示中の月にする',onclick:function(){setRangeToMonth();renderBulk()}}));
+    b.appendChild(E('p',{className:'small',id:'bulkPrev'}));
+    b.appendChild(E('button',{className:'btn',text:'一括で入力する',onclick:function(){
+      var r=rangeKeys();if(r.err){setMsg(r.err,false);return}applyBulk(r.keys);
+    }}));
+  }else{
+    b.appendChild(E('p',{className:'small',text:'カレンダーの日付をタップして選び、画面の下のバーで「適用」を押します。月を切り替えても、選んだ日は残ります。'}));
+    b.appendChild(E('button',{className:'btn',text:'選択モードを始める',onclick:startMsel}));
+  }
+  if(bulkUndo)b.appendChild(E('div',{},[E('button',{className:'btn sub',style:'margin-top:10px',text:'直前の一括入力を取り消す',onclick:undoBulk})]));
+  if(bulkMsg)b.appendChild(E('p',{className:'small '+(bulkMsgOk?'ok':'ng'),text:bulkMsg}));
+  updPrev();
+}
+
+/* カレンダーで選ぶ(選択モード) */
+var mbar=E('div',{id:'mbar'});
+document.body.appendChild(mbar);
+function renderBar(){
+  mbar.innerHTML='';
+  var n=Object.keys(msel).length;
+  mbar.appendChild(E('div',{style:'display:flex;justify-content:space-between;align-items:center'},[
+    E('b',{text:'日付を選択中:'+n+'日'}),
+    E('button',{className:'lk',text:'全解除',onclick:function(){msel={};renderCal();renderBar()}})
+  ]));
+  mbar.appendChild(chipsFor(true));
+  var row=E('div',{className:'chips',style:'align-items:center'},modeBtns());
+  row.appendChild(E('button',{className:'btn',style:'margin:0',text:'適用',onclick:function(){
+    var ks=Object.keys(msel).sort();
+    if(applyBulk(ks)){msel={};renderCal();renderBar()}
+  }}));
+  if(bulkUndo)row.appendChild(E('button',{className:'btn sub',style:'margin:0',text:'取り消し',onclick:undoBulk}));
+  row.appendChild(E('button',{className:'btn sub',style:'margin:0',text:'終了',onclick:endMsel}));
+  mbar.appendChild(row);
+  if(bulkMsg)mbar.appendChild(E('p',{className:'small '+(bulkMsgOk?'ok':'ng'),text:bulkMsg}));
+}
+function startMsel(){
+  closePop();
+  multiMode=true;msel={};bulkMsg='';
+  document.body.classList.add('msel');
+  renderCal();renderBar();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function endMsel(){
+  multiMode=false;msel={};
+  document.body.classList.remove('msel');
+  renderCal();
+}
+var _pickB=pick;
+pick=function(k){
+  if(multiMode){if(msel[k])delete msel[k];else msel[k]=1;renderCal();renderBar()}
+  else _pickB(k);
+};
+var _rcB=renderCal;
+renderCal=function(){
+  _rcB();
+  if(!multiMode)return;
+  var y=cur.getFullYear(),m=cur.getMonth(),g=$('grid'),f=new Date(y,m,1).getDay(),L=new Date(y,m+1,0).getDate();
+  for(var d=1;d<=L;d++){
+    var c=g.children[7+f+d-1];
+    if(c&&msel[y+'-'+pad(m+1)+'-'+pad(d)])c.classList.add('msel');
+  }
+};
+var _goB=go;
+go=function(a,b){if(multiMode)endMsel();_goB(a,b)};
+
+/* 画面に組み込む */
+var bulkDet=E('details',{className:'sub bulk'},[E('summary',{text:'一括入力'}),E('div',{id:'bulkBody'})]);
+$('ac-shift').querySelector('details.sub').before(bulkDet);
+var _raB=renderAll;
+renderAll=function(){_raB();renderBulk();renderBar()};
+var _rfB=refresh;
+refresh=function(){_rfB();renderBulk()};
+renderBulk();renderBar();
+/* ===== /第12段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
