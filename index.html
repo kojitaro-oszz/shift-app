@@ -1221,5 +1221,258 @@ renderAll=function(){_raFx();applyFx();renderFxCard()};
 if(reduceMQ&&reduceMQ.addEventListener)reduceMQ.addEventListener('change',function(){applyFx();renderFxCard()});
 applyFx();renderFxCard();
 /* ===== /第15段階 ===== */
+/* ===== 第17段階:手取りの目安(令和8年度) ===== */
+var PREF={'北海道':10.28,'青森県':9.85,'岩手県':9.51,'宮城県':10.10,'秋田県':10.01,'山形県':9.75,'福島県':9.50,'茨城県':9.52,'栃木県':9.82,'群馬県':9.68,'埼玉県':9.67,'千葉県':9.73,'東京都':9.85,'神奈川県':9.92,'新潟県':9.21,'富山県':9.59,'石川県':9.70,'福井県':9.71,'山梨県':9.55,'長野県':9.63,'岐阜県':9.80,'静岡県':9.61,'愛知県':9.93,'三重県':9.77,'滋賀県':9.88,'京都府':9.89,'大阪府':10.13,'兵庫県':10.12,'奈良県':9.91,'和歌山県':10.06,'鳥取県':9.86,'島根県':9.94,'岡山県':10.05,'広島県':9.78,'山口県':10.15,'徳島県':10.24,'香川県':10.02,'愛媛県':9.98,'高知県':10.05,'福岡県':10.11,'佐賀県':10.55,'長崎県':10.06,'熊本県':10.08,'大分県':10.08,'宮崎県':9.77,'鹿児島県':10.13,'沖縄県':9.44};
+var SRT=[[63000,58000],[73000,68000],[83000,78000],[93000,88000],[101000,98000],[107000,104000],[114000,110000],[122000,118000],[130000,126000],[138000,134000],[146000,142000],[155000,150000],[165000,160000],[175000,170000],[185000,180000],[195000,190000],[210000,200000],[230000,220000],[250000,240000],[270000,260000],[290000,280000],[310000,300000],[330000,320000],[350000,340000],[370000,360000],[395000,380000],[425000,410000],[455000,440000],[485000,470000],[515000,500000],[545000,530000],[575000,560000],[605000,590000],[635000,620000],[665000,650000],[695000,680000],[730000,710000],[770000,750000],[810000,790000],[855000,830000],[905000,880000],[955000,930000],[1005000,980000],[1055000,1030000],[1115000,1090000],[1175000,1150000],[1235000,1210000],[1295000,1270000],[1355000,1330000]];
+var OTA=[[105000,3800],[113000,4100],[123000,4400],[125000,4700],[135000,6100],[149000,8300],[161000,10100],[175000,12100],[183000,14000],[195000,18300],[209000,23000],[221000,26400],[236000,31500],[251000,36600],[263000,40600],[281000,46700],[299000,53600],[308000,56100],[320000,59500],[341000,66800],[362000,73900],[380000,79600],[401000,90500],[422000,102400],[443000,114200],[470000,129600],[500000,145700],[530000,161600],[560000,176300],[590000,191000],[620000,205700],[650000,219000],[680000,229100],[710000,243800],[740000,259200]];
+var TAXK='shift_tax';
+var TX={on:true,pref:'東京都',manual:10,care:false,deps:0,ei:0.5,resi:{mode:'none',fixed:0,prev:0},jobs:{},inBackup:false};
+function normTax(v){
+  var t={on:v.on!==false,pref:PREF[v.pref]?v.pref:(v.pref==='manual'?'manual':'東京都'),manual:Math.max(0,Math.min(20,+v.manual||10)),care:!!v.care,deps:Math.max(0,Math.min(7,Math.floor(+v.deps||0))),ei:[0.5,0.6].indexOf(+v.ei)>=0?+v.ei:0.5,resi:{mode:'none',fixed:0,prev:0},jobs:{},inBackup:!!v.inBackup};
+  if(obj(v.resi)){if(['none','fixed','est'].indexOf(v.resi.mode)>=0)t.resi.mode=v.resi.mode;t.resi.fixed=Math.max(0,+v.resi.fixed||0);t.resi.prev=Math.max(0,+v.resi.prev||0)}
+  if(obj(v.jobs)){for(var n in v.jobs){var j=v.jobs[n];if(obj(j))t.jobs[n]={col:j.col==='otsu'?'otsu':'ko',ss:!!j.ss,ei:!!j.ei}}}
+  return t;
+}
+function saveTax(){try{localStorage.setItem(TAXK,JSON.stringify(TX))}catch(e){}}
+(function(){try{var v=JSON.parse(localStorage.getItem(TAXK)||'null');if(obj(v))TX=normTax(v)}catch(e){}})();
+
+function r5(v){return Math.ceil(Math.round(v*1000)/1000-0.5)}
+function stdRem(g){for(var i=0;i<SRT.length;i++)if(g<SRT[i][0])return SRT[i][1];return 1390000}
+function taxKo(X,N){
+  if(X<105000)return 0;
+  var t;
+  if(X<740000){
+    var S=X*12,ded=S<=1625000?650000:S<=1800000?S*0.4-100000:S<=3600000?S*0.3+80000:S<=6600000?S*0.2+440000:S<=8500000?S*0.1+1100000:1950000;
+    var Tt=Math.max(0,S-ded-580000);
+    var tax=Tt<=1950000?Tt*0.05:Tt<=3300000?Tt*0.1-97500:Tt<=6950000?Tt*0.2-427500:Tt<=9000000?Tt*0.23-636000:Tt*0.33-1536000;
+    t=Math.round(tax*1.021/12/10)*10;
+  }else if(X<790000)t=71680+(X-740000)*0.2042;
+  else if(X<960000)t=81890+(X-790000)*0.23483;
+  else if(X<1710000)t=121820+(X-960000)*0.33693;
+  else if(X<3500000)t=374520+(X-1710000)*0.4084;
+  else t=1125270+(X-3500000)*0.45945;
+  return Math.max(0,Math.floor(t)-1610*N);
+}
+function taxOtsu(X){
+  if(X<105000)return Math.floor(X*0.03063);
+  if(X>=1710000)return Math.floor(655400+(X-1710000)*0.45945);
+  if(X>=740000)return Math.floor(259200+(X-740000)*0.4084);
+  for(var i=OTA.length-1;i>=0;i--){
+    if(X>=OTA[i][0]){
+      var a=OTA[i],b=OTA[i+1]||a,t=b[0]>a[0]?(X-a[0])/(b[0]-a[0]):0;
+      return Math.round((a[1]+(b[1]-a[1])*t)/100)*100;
+    }
+  }
+  return 0;
+}
+function resiEst(prev){
+  if(prev<=1100000)return 0;
+  var S=prev,ded=S<=1625000?650000:S<=1800000?S*0.4-100000:S<=3600000?S*0.3+80000:S<=6600000?S*0.2+440000:S<=8500000?S*0.1+1100000:1950000;
+  var Tx=Math.max(0,S-ded-S*0.15-430000);
+  Tx=Math.floor(Tx/1000)*1000;
+  var inc=Tx*0.1;
+  if(Tx>0)inc=Math.max(0,inc-2500);
+  return Math.floor(inc+5000);
+}
+function resiMonthly(){
+  if(TX.resi.mode==='fixed')return TX.resi.fixed;
+  if(TX.resi.mode==='est')return Math.floor(resiEst(TX.resi.prev)/12);
+  return 0;
+}
+function jobNames(){
+  var s={},o=[];
+  patterns.forEach(function(p){if(p.pay>0){var n=p.job||p.name;if(!s[n]){s[n]=1;o.push(n)}}});
+  return o;
+}
+function ensureJobs(){
+  var ch=false;
+  jobNames().forEach(function(n,i){
+    if(!TX.jobs[n]){TX.jobs[n]=i===0?{col:'ko',ss:true,ei:true}:{col:'otsu',ss:false,ei:false};ch=true}
+  });
+  if(ch)saveTax();
+}
+function monthGroups(){
+  var m=cur.getMonth(),pre=cur.getFullYear()+'-'+pad(m+1)+'-',g={},ord=[];
+  Object.keys(shifts).forEach(function(key){
+    if(key.indexOf(pre)!==0)return;
+    shifts[key].forEach(function(id){
+      var p=findP(id);if(!p)return;
+      var n=p.job||p.name,x=g[n];
+      if(!x){x=g[n]={name:n,plan:0,act:0,mo:0};ord.push(n)}
+      var r=calc(key,p);
+      if(p.payType==='monthly'){if(p.pay>x.mo)x.mo=p.pay}
+      else{x.plan+=r.pp;x.act+=r.ap}
+    });
+  });
+  return ord.map(function(n){var x=g[n];x.plan+=x.mo;x.act+=x.mo;return x});
+}
+function netCalc(kind){
+  ensureJobs();
+  var key=ym(cur),out={jobs:[],g:0,ss:0,tax:0,net:0,resi:0};
+  monthGroups().forEach(function(x){
+    var g=kind==='act'?x.act:x.plan;
+    if(g<=0)return;
+    var c=TX.jobs[x.name]||{col:'otsu',ss:false,ei:false};
+    var o={name:x.name,g:g,health:0,care:0,kodomo:0,pension:0,ei:0,col:c.col};
+    if(c.ss){
+      var s=stdRem(g),ps=Math.min(650000,Math.max(88000,s)),rate=TX.pref==='manual'?TX.manual:PREF[TX.pref];
+      o.health=r5(s*rate/200);
+      o.care=TX.care?r5(s*1.62/200):0;
+      o.kodomo=key>='2026-04'?r5(s*0.23/200):0;
+      o.pension=r5(ps*9.15/100);
+    }
+    if(c.ei)o.ei=r5(g*TX.ei/100);
+    o.ss=o.health+o.care+o.kodomo+o.pension+o.ei;
+    var X=g-o.ss;
+    o.tax=c.col==='ko'?taxKo(X,TX.deps):taxOtsu(X);
+    o.net=g-o.ss-o.tax;
+    out.jobs.push(o);out.g+=g;out.ss+=o.ss;out.tax+=o.tax;
+  });
+  out.resi=out.jobs.length?resiMonthly():0;
+  out.net=out.g-out.ss-out.tax-out.resi;
+  return out;
+}
+
+/* 集計に表示 */
+$('ac-sum').querySelector('.in').appendChild(E('div',{id:'netBody',style:'margin-top:14px;border-top:1px solid var(--line);padding-top:8px'}));
+var netKind='plan';
+function nbx(a,b){return E('div',{className:'bx'},[E('span',{text:a}),E('b',{text:b})])}
+function nrow(l,v,minus){return E('div',{className:'sr'},[E('span',{text:l}),E('span',{text:(minus?'−':'')+yen(v)})])}
+function openTaxSettings(){
+  try{closePop()}catch(e){}
+  $('sheet').hidden=false;
+  setTimeout(function(){$('taxCard').scrollIntoView({block:'start'})},60);
+}
+function renderNet(){
+  var b=$('netBody');b.innerHTML='';
+  b.appendChild(E('h3',{text:'手取りの目安',style:'margin-top:0'}));
+  if(!TX.on){
+    b.appendChild(note('手取りの計算はOFFです。'));
+    b.appendChild(E('button',{className:'btn sub',text:'手取り計算の設定',onclick:openTaxSettings}));
+    return;
+  }
+  b.appendChild(E('div',{className:'chips',style:'margin-bottom:8px'},
+    [['plan','見込み'],['act','実績(打刻済み)']].map(function(o){
+      return E('button',{className:'fb sm'+(netKind===o[0]?' on':''),text:o[1],onclick:function(){netKind=o[0];renderNet()}});
+    })));
+  var r=netCalc(netKind);
+  if(!r.jobs.length){
+    b.appendChild(note('計算できるシフトがありません(給与の金額と、シフトの割り当てが必要です)'));
+    b.appendChild(E('button',{className:'btn sub',text:'手取り計算の設定',onclick:openTaxSettings}));
+    return;
+  }
+  b.appendChild(E('div',{className:'tot'},[nbx('総支給',yen(r.g)),nbx('控除',yen(r.ss+r.tax+r.resi)),nbx('手取り(目安)',yen(r.net))]));
+  r.jobs.forEach(function(o){
+    var card=E('div',{className:'mg'});
+    card.appendChild(E('div',{className:'gh'},[E('span',{text:o.name+'('+(o.col==='ko'?'甲欄':'乙欄')+')'}),E('span',{style:'font-weight:normal',text:'手取り '+yen(o.net)})]));
+    var l=E('div',{className:'gp'});
+    l.appendChild(nrow('総支給',o.g,false));
+    if(o.health)l.appendChild(nrow('健康保険',o.health,true));
+    if(o.care)l.appendChild(nrow('介護保険',o.care,true));
+    if(o.kodomo)l.appendChild(nrow('子ども・子育て支援金',o.kodomo,true));
+    if(o.pension)l.appendChild(nrow('厚生年金',o.pension,true));
+    if(o.ei)l.appendChild(nrow('雇用保険',o.ei,true));
+    l.appendChild(nrow('所得税(源泉)',o.tax,true));
+    card.appendChild(l);
+    b.appendChild(card);
+  });
+  if(r.resi>0)b.appendChild(E('div',{className:'mg'},[nrow('住民税(目安)',r.resi,true)]));
+  var k=ym(cur);
+  b.appendChild(E('p',{className:'small',text:'目安です。賞与・通勤手当・各種手当・年末調整は含みません。社会保険料は、その月の総支給額で計算しています(実際は4〜6月の平均で決まる標準報酬月額を使うため、ずれることがあります)。'+((k<'2026-03'||k>'2027-02')?'この月も、令和8年度(2026年3月分〜2027年2月分)の料率で計算しています。':'')}));
+  b.appendChild(E('button',{className:'btn sub',text:'手取り計算の設定',onclick:openTaxSettings}));
+}
+var _rsTax=renderSum;
+renderSum=function(){_rsTax();renderNet()};
+
+/* 設定画面 */
+var taxCard=E('div',{className:'card',id:'taxCard'});
+$('fxCard').after(taxCard);
+function tg(label,on,fn){return E('button',{className:'fb sm'+(on?' on':''),text:label,onclick:fn})}
+function updTax(){saveTax();renderTaxCard();renderNet()}
+function renderTaxCard(){
+  var c=$('taxCard');c.innerHTML='';
+  c.appendChild(E('b',{text:'手取りの計算(目安)'}));
+  c.appendChild(E('p',{className:'small',text:'この設定は、この端末の中にだけ保存されます(アプリのコードやGitHubには入っていません)。'}));
+  c.appendChild(E('div',{className:'chips',style:'margin-top:6px'},[tg('手取り計算 '+(TX.on?'ON':'OFF'),TX.on,function(){TX.on=!TX.on;updTax()})]));
+  if(TX.on){
+    c.appendChild(E('h3',{text:'健康保険(協会けんぽ・令和8年度)'}));
+    var sel=E('select',{onchange:function(){TX.pref=this.value;updTax()}},
+      Object.keys(PREF).map(function(k){return E('option',{value:k,text:k+'('+PREF[k]+'%)'})}).concat([E('option',{value:'manual',text:'健康保険組合など(料率を入力)'})]));
+    sel.value=TX.pref;
+    c.appendChild(E('div',{className:'row'},[sel]));
+    if(TX.pref==='manual'){
+      c.appendChild(E('div',{className:'row'},[E('input',{type:'number',step:'0.01',min:'0',max:'20',value:TX.manual,onchange:function(){TX.manual=Math.max(0,Math.min(20,+this.value||0));updTax()}}),E('span',{text:'%(全体の料率。本人は半分)'})]));
+    }
+    c.appendChild(E('div',{className:'chips'},[tg('40〜64歳(介護保険あり) '+(TX.care?'ON':'OFF'),TX.care,function(){TX.care=!TX.care;updTax()})]));
+    c.appendChild(E('h3',{text:'雇用保険の事業区分'}));
+    c.appendChild(E('div',{className:'chips'},[
+      tg('一般(0.5%)',TX.ei===0.5,function(){TX.ei=0.5;updTax()}),
+      tg('農林水産・清酒製造・建設(0.6%)',TX.ei===0.6,function(){TX.ei=0.6;updTax()})]));
+    c.appendChild(E('h3',{text:'扶養親族等の数(源泉の甲欄)'}));
+    var ds=E('select',{onchange:function(){TX.deps=+this.value;updTax()}},[0,1,2,3,4,5,6,7].map(function(i){return E('option',{value:i,text:i+'人'})}));
+    ds.value=TX.deps;
+    c.appendChild(E('div',{className:'row'},[ds]));
+    c.appendChild(E('p',{className:'small',text:'「扶養控除等申告書」に書いた人数です(あなた自身が学生などの場合は、勤労学生に当てはまるとき1人と数えます)。わからなければ0のままで構いません。'}));
+    c.appendChild(E('h3',{text:'住民税'}));
+    c.appendChild(E('div',{className:'chips'},[
+      tg('かからない・わからない(0円)',TX.resi.mode==='none',function(){TX.resi.mode='none';updTax()}),
+      tg('月額を入力',TX.resi.mode==='fixed',function(){TX.resi.mode='fixed';updTax()}),
+      tg('前年の年収から概算',TX.resi.mode==='est',function(){TX.resi.mode='est';updTax()})]));
+    if(TX.resi.mode==='fixed'){
+      c.appendChild(E('div',{className:'row',style:'margin-top:6px'},[E('input',{type:'number',inputMode:'numeric',min:'0',value:TX.resi.fixed>0?TX.resi.fixed:'',placeholder:'住民税の月額(円)',onchange:function(){TX.resi.fixed=Math.max(0,+this.value||0);updTax()}})]));
+    }
+    if(TX.resi.mode==='est'){
+      c.appendChild(E('div',{className:'row',style:'margin-top:6px'},[E('input',{type:'number',inputMode:'numeric',min:'0',value:TX.resi.prev>0?TX.resi.prev:'',placeholder:'前年の給与の年収(円)',onchange:function(){TX.resi.prev=Math.max(0,+this.value||0);updTax()}})]));
+      c.appendChild(E('p',{className:'small',text:'概算:月 '+yen(Math.floor(resiEst(TX.resi.prev)/12))+'(目安。実際は市区町村の通知で確認してください)'}));
+    }
+    c.appendChild(E('p',{className:'small',text:'住民税は前年の所得で決まり、会社員は6月から天引きされます。前年に収入がなければ、かかりません。'}));
+    c.appendChild(E('h3',{text:'職場ごとの設定'}));
+    ensureJobs();
+    var names=jobNames();
+    if(!names.length)c.appendChild(note('「シフトの種類の設定」で給与の金額を入れると、ここに職場が出ます'));
+    names.forEach(function(n){
+      var j=TX.jobs[n];
+      c.appendChild(E('div',{className:'pcard'},[
+        E('b',{text:n}),
+        E('div',{className:'chips',style:'margin-top:6px'},[
+          tg('甲欄(メイン)',j.col==='ko',function(){j.col='ko';updTax()}),
+          tg('乙欄(サブ)',j.col==='otsu',function(){j.col='otsu';updTax()}),
+          tg('社会保険 '+(j.ss?'あり':'なし'),j.ss,function(){j.ss=!j.ss;updTax()}),
+          tg('雇用保険 '+(j.ei?'あり':'なし'),j.ei,function(){j.ei=!j.ei;updTax()})])]));
+    });
+    c.appendChild(E('p',{className:'small',text:'甲欄=「扶養控除等申告書」を出している勤務先(通常は1か所)。乙欄=出していない勤務先で、税額が高くなります。最初に設定した職場がメインになっています。'}));
+  }
+  c.appendChild(E('h3',{text:'バックアップ'}));
+  c.appendChild(E('div',{className:'chips'},[tg('バックアップに含める '+(TX.inBackup?'ON':'OFF'),TX.inBackup,function(){TX.inBackup=!TX.inBackup;updTax()})]));
+  c.appendChild(E('p',{className:'small',text:'OFFのとき、バックアップのファイルにこの設定は入りません(復元後に入力し直します)。ONにすると、ファイルを見た人に、扶養の人数や保険の加入状況がわかります。'}));
+  c.appendChild(E('button',{className:'btn sub',style:'margin-top:8px',text:'手取りの設定をすべて削除',onclick:function(){
+    if(!confirm('手取り計算の設定を、この端末からすべて削除します。よろしいですか?'))return;
+    TX=normTax({});
+    try{localStorage.removeItem(TAXK)}catch(e){}
+    renderTaxCard();renderNet();
+  }}));
+  c.appendChild(E('p',{className:'small',text:'根拠:協会けんぽ令和8年度保険料率、厚生年金9.15%(本人分)、雇用保険令和8年度、国税庁の令和8年分源泉徴収税額表(月額表)。年度が変わると料率も変わります。'}));
+}
+/* バックアップとの連携 */
+var _buildTx=build;
+build=function(){
+  var s=_buildTx();
+  if(!TX.inBackup)return s;
+  try{var d=JSON.parse(s);d.tax=TX;return JSON.stringify(d)}catch(e){return s}
+};
+var _restTx=restore;
+restore=function(text){
+  _restTx(text);
+  try{
+    if($('backupMsg').textContent==='復元しました。'){
+      var d=JSON.parse(text);
+      if(d&&obj(d.tax)){TX=normTax(d.tax);saveTax();renderTaxCard();renderNet()}
+    }
+  }catch(e){}
+};
+var _raTx=renderAll;
+renderAll=function(){_raTx();renderTaxCard();renderNet()};
+renderTaxCard();renderNet();
+/* ===== /第17段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
