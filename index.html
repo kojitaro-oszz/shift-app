@@ -953,5 +953,53 @@ var _raD=renderAll;
 renderAll=function(){_raD();renderDel()};
 renderDel();
 /* ===== /第13段階 ===== */
+/* ===== 第14段階:選択日の情報・名称・インデックス ===== */
+document.title='My Schedule';
+(function(){var h=document.querySelector('h1');if(h)h.textContent='My Schedule'})();
+
+function infoKey(){return sel||tk()}
+(function(){
+  var card=$('tdShift').closest('.card');
+  card.innerHTML='';
+  card.appendChild(E('b',{id:'infoTitle',text:'今日の情報'}));
+  function row(icon,label,id,target){
+    return E('div',{className:'ti'},[
+      E('span',{},[document.createTextNode(icon+' '+label+':'),E('span',{id:id})]),
+      E('button',{className:'lk',text:'確認',onclick:function(){go(target,infoKey())}})
+    ]);
+  }
+  card.appendChild(row('💼','シフト','tdShift','ac-shift'));
+  card.appendChild(row('📅','予定','tdEvent','ac-event'));
+  card.appendChild(row('☑️','未完了のToDo','tdTodo','ac-todo'));
+  card.appendChild(row('📝','メモ','tdMemo','ac-memo'));
+})();
+renderToday=function(){
+  var k=infoKey(),isT=(k===tk());
+  var w=dows[new Date(+k.slice(0,4),+k.slice(5,7)-1,+k.slice(8,10)).getDay()];
+  $('infoTitle').textContent=isT?'今日の情報':(+k.slice(5,7))+'月'+(+k.slice(8,10))+'日('+w+')の情報';
+  var ps=dayPats(k),ev=dayEvs(k);
+  var n=todos.filter(function(x){return !x.done&&(x.date===k||(isT&&x.date===''))}).length;
+  $('tdShift').textContent=ps.length?ps.map(function(p){return plabel(p)+(p.start?' '+p.start+'-'+p.end:'')}).join(' / '):'なし';
+  $('tdEvent').textContent=ev.length?ev.map(function(e){return (e.start?e.start+' ':'')+e.title}).join(' / '):'なし';
+  $('tdTodo').textContent=n+'件';
+  var m=memos[k]?memos[k].replace(/\s+/g,' ').trim():'';
+  $('tdMemo').textContent=m?(m.length>20?m.slice(0,20)+'…':m):'なし';
+};
+
+/* インデックス:下のボタンの上に収める */
+var fxCss=document.createElement('style');
+fxCss.textContent=`
+body.idx .ac.pop{left:8px;right:8px;bottom:var(--tbh,92px);max-height:min(56vh,calc(100vh - var(--tbh,92px) - 170px));border-radius:22px}
+body.idx .ac.pop>.in{padding-bottom:16px}
+body.idx{padding-bottom:calc(var(--tbh,92px) + 12px)}
+body.idx.msel{padding-bottom:300px}
+`;
+document.head.appendChild(fxCss);
+function setTbh(){var h=tabbar.offsetHeight;if(h>0)document.documentElement.style.setProperty('--tbh',(h+16)+'px')}
+if(window.ResizeObserver)new ResizeObserver(setTbh).observe(tabbar);
+window.addEventListener('resize',setTbh);
+setTbh();
+renderToday();
+/* ===== /第14段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
