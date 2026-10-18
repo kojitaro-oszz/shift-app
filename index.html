@@ -19,6 +19,7 @@
   .sun { color: #d33; }
   .sat { color: #0a60d3; }
   .tag { display: block; margin-top: 2px; font-size: 10px; color: #fff; border-radius: 4px; padding: 1px 2px; text-align: center; white-space: nowrap; overflow: hidden; }
+  .memo-mark { font-size: 10px; margin-left: 2px; }
   .panel { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; }
   .panel h2 { font-size: 15px; margin: 0 0 8px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -31,6 +32,8 @@
   .del { border: none; background: #fee; color: #c00; border-radius: 6px; padding: 6px 10px; }
   .add { border: none; background: #0a84ff; color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 14px; margin-top: 4px; }
   .small { font-size: 12px; color: #666; margin: 4px 0 0; }
+  #memoText { width: 100%; box-sizing: border-box; min-height: 90px; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; resize: vertical; }
+  #memoText:disabled { background: #f0f0f0; }
 </style>
 </head>
 <body>
@@ -48,6 +51,12 @@
 </div>
 
 <div class="panel">
+  <h2 id="memoTitle">メモ</h2>
+  <textarea id="memoText" placeholder="日付をタップするとメモを書けます" disabled></textarea>
+  <p class="small">入力すると自動保存されます</p>
+</div>
+
+<div class="panel">
   <h2>シフトの種類</h2>
   <div id="patterns"></div>
   <button class="add" id="addPattern">+ 種類を追加</button>
@@ -62,13 +71,16 @@ var dows = ['日','月','火','水','木','金','土'];
 
 var patterns = [];
 var shifts = {};
+var memos = {};
 
 function load() {
   try {
     var p = localStorage.getItem('shift_patterns');
     var s = localStorage.getItem('shift_assign');
+    var m = localStorage.getItem('shift_memos');
     if (p) patterns = JSON.parse(p);
     if (s) shifts = JSON.parse(s);
+    if (m) memos = JSON.parse(m);
   } catch (e) {}
   if (!patterns.length) {
     patterns = [
@@ -82,6 +94,7 @@ function save() {
   try {
     localStorage.setItem('shift_patterns', JSON.stringify(patterns));
     localStorage.setItem('shift_assign', JSON.stringify(shifts));
+    localStorage.setItem('shift_memos', JSON.stringify(memos));
   } catch (e) {}
 }
 
@@ -128,6 +141,13 @@ function renderCalendar() {
     cell.className = cls;
     cell.appendChild(document.createTextNode(day));
 
+    if (memos[key]) {
+      var mark = document.createElement('span');
+      mark.className = 'memo-mark';
+      mark.textContent = '📝';
+      cell.appendChild(mark);
+    }
+
     var pat = shifts[key] ? findPattern(shifts[key]) : null;
     if (pat) {
       var tag = document.createElement('span');
@@ -142,6 +162,7 @@ function renderCalendar() {
       selected = this.getAttribute('data-key');
       renderCalendar();
       renderAssign();
+      renderMemo();
     };
     grid.appendChild(cell);
   }
@@ -181,6 +202,22 @@ function renderAssign() {
     renderAssign();
   };
   chips.appendChild(clear);
+}
+
+function renderMemo() {
+  var title = document.getElementById('memoTitle');
+  var ta = document.getElementById('memoText');
+  if (!selected) {
+    title.textContent = 'メモ';
+    ta.value = '';
+    ta.disabled = true;
+    ta.placeholder = '日付をタップするとメモを書けます';
+    return;
+  }
+  title.textContent = selected + ' のメモ';
+  ta.disabled = false;
+  ta.placeholder = 'ここにメモを入力';
+  ta.value = memos[selected] || '';
 }
 
 function renderPatterns() {
@@ -233,8 +270,18 @@ function renderPatterns() {
 function renderAll() {
   renderCalendar();
   renderAssign();
+  renderMemo();
   renderPatterns();
 }
+
+document.getElementById('memoText').oninput = function () {
+  if (!selected) return;
+  var v = this.value;
+  if (v.trim()) memos[selected] = v;
+  else delete memos[selected];
+  save();
+  renderCalendar();
+};
 
 document.getElementById('prev').onclick = function () {
   current.setMonth(current.getMonth() - 1);
