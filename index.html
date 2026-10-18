@@ -30,6 +30,8 @@
   .chip.off { background: #999 !important; }
   .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
   .row input[type=text] { flex: 1; min-width: 0; font-size: 16px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
+  .row input[type=number] { flex: 1; min-width: 0; font-size: 16px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
+  .row select { font-size: 16px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; background: #fff; }
   .row input[type=time] { font-size: 14px; }
   .row input[type=color] { width: 36px; height: 32px; border: none; padding: 0; background: none; }
   .pcard { padding: 8px 0; border-bottom: 1px solid #eee; }
@@ -66,6 +68,23 @@
   #backupMsg { font-size: 13px; margin: 8px 0 0; min-height: 18px; }
   #backupMsg.ok { color: #0a7d3b; }
   #backupMsg.ng { color: #c00; }
+  .pc { padding: 8px 0; border-bottom: 1px solid #eee; }
+  .pc:last-child { border-bottom: none; }
+  .pc-head { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-bottom: 6px; font-weight: bold; }
+  .pc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .pc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .pc-row .add { margin-top: 0; min-width: 64px; }
+  .pc-row input[type=time] { font-size: 16px; }
+  .pc-status { font-size: 13px; color: #333; line-height: 1.7; }
+  .warn { color: #c2410c; }
+  .good { color: #0a7d3b; }
+  .sum-total { display: flex; gap: 8px; margin-bottom: 8px; }
+  .sum-box { flex: 1; background: #f5f5f7; border-radius: 8px; padding: 8px; text-align: center; }
+  .sum-box b { display: block; font-size: 17px; margin: 2px 0; }
+  .sum-box span { font-size: 11px; color: #666; }
+  .sum-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #eee; }
+  .sum-row .r { text-align: right; flex-shrink: 0; }
+  .sum-row .sub { color: #666; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -81,6 +100,12 @@
   <h2 id="assignTitle">日付をタップしてください</h2>
   <div class="chips" id="chips"></div>
   <p class="small" id="assignHint" style="display:none">複数選べます(かけもちOK)。もう一度タップで解除。</p>
+</div>
+
+<div class="panel">
+  <h2 id="punchTitle">打刻</h2>
+  <div id="punchList"></div>
+  <p class="small">出勤・退勤ボタンは、今日の日付を選んだときに使えます。他の日は時刻を手入力してください。実績は打刻どおりに計算します(早く着いた分や残業も含みます)。</p>
 </div>
 
 <div class="panel">
@@ -113,10 +138,16 @@
 </div>
 
 <div class="panel">
+  <h2 id="sumTitle">月の集計</h2>
+  <div id="sumBody"></div>
+  <p class="small">見込み=予定どおり働いた場合。実績=退勤まで打刻した分です。日給は退勤まで打刻した日に満額、月給は職場ごとに月1回の固定額です(遅刻・早退の控除なし)。</p>
+</div>
+
+<div class="panel">
   <h2>シフトの種類</h2>
   <div id="patterns"></div>
   <button class="add" id="addPattern">+ 種類を追加</button>
-  <p class="small">職場名・名前・色・時間を変更すると自動保存されます。かけもちの場合は、職場ごとに種類を作ってください。</p>
+  <p class="small">1行目:色・名前、2行目:職場・時間、3行目:給与の種類・金額・休憩(分)。かけもちの場合は、職場ごとに種類を作ってください。月給は、同じ職場の種類に同じ金額を入れてください(1回だけ加算されます)。</p>
 </div>
 
 <div class="panel">
@@ -147,7 +178,34 @@ var shifts = {};   // { 'YYYY-MM-DD': ['p1','p2'] }
 var memos = {};
 var todos = [];
 var events = [];   // [{ id, date, title, start, end, color }]
+var punches = {};  // { 'YYYY-MM-DD|patternId': { in: 'HH:MM', out: 'HH:MM' } }
 
+function defaultPatterns() {
+  return [
+    { id: 'p1', name: '早番', job: '', color: '#f59e0b', start: '08:00', end: '16:00', payType: 'hourly', pay: 0, breakMin: 0 },
+    { id: 'p2', name: '遅番', job: '', color: '#6366f1', start: '14:00', end: '22:00', payType: 'hourly', pay: 0, breakMin: 0 },
+    { id: 'p3', name: '休み', job: '', color: '#10b981', start: '', end: '', payType: 'hourly', pay: 0, breakMin: 0 }
+  ];
+}
+
+function normalizePatterns(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(function (p) {
+    return p && typeof p === 'object' && typeof p.id === 'string';
+  }).map(function (p) {
+    return {
+      id: p.id,
+      name: String(p.name || '名称なし'),
+      job: typeof p.job === 'string' ? p.job : '',
+      color: typeof p.color === 'string' ? p.color : '#999999',
+      start: typeof p.start === 'string' ? p.start : '',
+      end: typeof p.end === 'string' ? p.end : '',
+      payType: (p.payType === 'daily' || p.payType === 'monthly') ? p.payType : 'hourly',
+      pay: Math.max(0, Number(p.pay) || 0),
+      breakMin: Math.max(0, Number(p.breakMin) || 0)
+    };
+  });
+}
 function normalizeShifts(obj) {
   var out = {};
   for (var k in obj) {
@@ -172,6 +230,18 @@ function normalizeEvents(arr) {
     };
   });
 }
+function normalizePunches(obj) {
+  var out = {};
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
+  for (var k in obj) {
+    var v = obj[k];
+    if (!v || typeof v !== 'object') continue;
+    var i = typeof v['in'] === 'string' ? v['in'] : '';
+    var o = typeof v.out === 'string' ? v.out : '';
+    if (i || o) out[k] = { 'in': i, out: o };
+  }
+  return out;
+}
 
 function load() {
   try {
@@ -180,19 +250,15 @@ function load() {
     var m = localStorage.getItem('shift_memos');
     var t = localStorage.getItem('shift_todos');
     var ev = localStorage.getItem('shift_events');
-    if (p) patterns = JSON.parse(p);
+    var pu = localStorage.getItem('shift_punches');
+    if (p) patterns = normalizePatterns(JSON.parse(p));
     if (s) shifts = normalizeShifts(JSON.parse(s));
     if (m) memos = JSON.parse(m);
     if (t) todos = JSON.parse(t);
     if (ev) events = normalizeEvents(JSON.parse(ev));
+    if (pu) punches = normalizePunches(JSON.parse(pu));
   } catch (e) {}
-  if (!patterns.length) {
-    patterns = [
-      { id: 'p1', name: '早番', job: '', color: '#f59e0b', start: '08:00', end: '16:00' },
-      { id: 'p2', name: '遅番', job: '', color: '#6366f1', start: '14:00', end: '22:00' },
-      { id: 'p3', name: '休み', job: '', color: '#10b981', start: '', end: '' }
-    ];
-  }
+  if (!patterns.length) patterns = defaultPatterns();
 }
 function save() {
   try {
@@ -201,10 +267,19 @@ function save() {
     localStorage.setItem('shift_memos', JSON.stringify(memos));
     localStorage.setItem('shift_todos', JSON.stringify(todos));
     localStorage.setItem('shift_events', JSON.stringify(events));
+    localStorage.setItem('shift_punches', JSON.stringify(punches));
   } catch (e) {}
 }
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function todayKey() {
+  var n = new Date();
+  return n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate());
+}
+function nowHM() {
+  var n = new Date();
+  return pad(n.getHours()) + ':' + pad(n.getMinutes());
+}
 function findPattern(id) {
   for (var i = 0; i < patterns.length; i++) if (patterns[i].id === id) return patterns[i];
   return null;
@@ -242,6 +317,70 @@ function hasOpenTodo(key) {
   return false;
 }
 
+/* ---------- 時間・給与の計算 ---------- */
+function toMin(hm) {
+  var a = hm.split(':');
+  return parseInt(a[0], 10) * 60 + parseInt(a[1], 10);
+}
+// a から b までの分数(日をまたぐ場合は+24時間)
+function span(a, b) {
+  var d = toMin(b) - toMin(a);
+  if (d < 0) d += 1440;
+  return d;
+}
+// b - a の差(分)。-12時間〜+12時間に収める
+function sdiff(a, b) {
+  var d = toMin(b) - toMin(a);
+  while (d >= 720) d -= 1440;
+  while (d < -720) d += 1440;
+  return d;
+}
+function fmtMin(m) {
+  if (m <= 0) return '0分';
+  var h = Math.floor(m / 60);
+  var r = m % 60;
+  return (h ? h + '時間' : '') + (r ? r + '分' : '');
+}
+function yen(n) {
+  return '¥' + Math.floor(n).toLocaleString('ja-JP');
+}
+
+function calcShift(key, p) {
+  var pay = Number(p.pay) || 0;
+  var br = Number(p.breakMin) || 0;
+  var hasTime = !!(p.start && p.end);
+  var r = {
+    hasTime: hasTime, plannedMin: 0, actualMin: 0,
+    late: 0, early: 0, over: 0, done: false, working: false,
+    plannedPay: 0, actualPay: 0
+  };
+  if (hasTime) r.plannedMin = Math.max(0, span(p.start, p.end) - br);
+  var pu = punches[key + '|' + p.id];
+  if (pu && pu['in'] && hasTime) r.late = Math.max(0, sdiff(p.start, pu['in']));
+  if (pu && pu.out && hasTime) {
+    var delta = sdiff(p.end, pu.out);
+    r.early = Math.max(0, -delta);
+    r.over = Math.max(0, delta);
+  }
+  if (pu && pu['in'] && pu.out) {
+    r.done = true;
+    r.actualMin = Math.max(0, span(pu['in'], pu.out) - br);
+  } else if (pu && pu['in']) {
+    r.working = true;
+  }
+  if (pay > 0) {
+    if (p.payType === 'hourly') {
+      r.plannedPay = Math.floor(pay * r.plannedMin / 60);
+      r.actualPay = r.done ? Math.floor(pay * r.actualMin / 60) : 0;
+    } else if (p.payType === 'daily') {
+      r.plannedPay = pay;
+      r.actualPay = (r.done || !hasTime) ? pay : 0;
+    }
+  }
+  return r;
+}
+
+/* ---------- カレンダー ---------- */
 function renderCalendar() {
   var y = current.getFullYear();
   var m = current.getMonth();
@@ -258,8 +397,7 @@ function renderCalendar() {
 
   var firstDow = new Date(y, m, 1).getDay();
   var lastDate = new Date(y, m + 1, 0).getDate();
-  var now = new Date();
-  var todayKey = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  var tk = todayKey();
 
   for (var e = 0; e < firstDow; e++) {
     var empty = document.createElement('div');
@@ -274,7 +412,7 @@ function renderCalendar() {
     var cls = 'day';
     if (dow === 0) cls += ' sun';
     if (dow === 6) cls += ' sat';
-    if (key === todayKey) cls += ' today';
+    if (key === tk) cls += ' today';
     if (key === selected) cls += ' selected';
     cell.className = cls;
     cell.appendChild(document.createTextNode(day));
@@ -319,6 +457,7 @@ function renderCalendar() {
       selected = this.getAttribute('data-key');
       renderCalendar();
       renderAssign();
+      renderPunch();
       renderEvents();
       renderMemo();
       renderTodos();
@@ -357,6 +496,8 @@ function renderAssign() {
       save();
       renderCalendar();
       renderAssign();
+      renderPunch();
+      renderSummary();
     };
     chips.appendChild(b);
   });
@@ -370,10 +511,215 @@ function renderAssign() {
     save();
     renderCalendar();
     renderAssign();
+    renderPunch();
+    renderSummary();
   };
   chips.appendChild(clear);
 }
 
+/* ---------- 打刻 ---------- */
+function setPunch(k, field, val) {
+  var pu = punches[k] || { 'in': '', out: '' };
+  pu[field] = val;
+  if (!pu['in'] && !pu.out) delete punches[k];
+  else punches[k] = pu;
+  save();
+  renderPunch();
+  renderSummary();
+}
+
+function noteEl(text) {
+  var n = document.createElement('div');
+  n.className = 'todo-empty';
+  n.textContent = text;
+  return n;
+}
+
+function renderPunch() {
+  var title = document.getElementById('punchTitle');
+  var box = document.getElementById('punchList');
+  box.innerHTML = '';
+  if (!selected) {
+    title.textContent = '打刻';
+    box.appendChild(noteEl('日付をタップしてください'));
+    return;
+  }
+  title.textContent = selected + ' の打刻';
+  var list = dayPatterns(selected).filter(function (p) { return p.start && p.end; });
+  if (!list.length) {
+    box.appendChild(noteEl('打刻できるシフトがありません(開始・終了時間のあるシフトを選んでください)'));
+    return;
+  }
+  var isToday = (selected === todayKey());
+
+  list.forEach(function (p) {
+    var k = selected + '|' + p.id;
+    var pu = punches[k] || { 'in': '', out: '' };
+    var r = calcShift(selected, p);
+
+    var card = document.createElement('div');
+    card.className = 'pc';
+
+    var head = document.createElement('div');
+    head.className = 'pc-head';
+    var dot = document.createElement('span');
+    dot.className = 'pc-dot';
+    dot.style.background = p.color;
+    var ht = document.createElement('span');
+    ht.textContent = patLabel(p) + ' ' + p.start + '-' + p.end + (p.breakMin > 0 ? '(休憩' + p.breakMin + '分)' : '');
+    head.appendChild(dot);
+    head.appendChild(ht);
+    card.appendChild(head);
+
+    [['in', '出勤'], ['out', '退勤']].forEach(function (f) {
+      var row = document.createElement('div');
+      row.className = 'pc-row';
+      var btn = document.createElement('button');
+      btn.className = 'add';
+      btn.textContent = f[1];
+      btn.disabled = !isToday;
+      btn.onclick = function () {
+        if (pu[f[0]] && !confirm(f[1] + 'がすでに記録されています(' + pu[f[0]] + ')。今の時刻で上書きしますか?')) return;
+        setPunch(k, f[0], nowHM());
+      };
+      var inp = document.createElement('input');
+      inp.type = 'time';
+      inp.value = pu[f[0]] || '';
+      inp.onchange = function () { setPunch(k, f[0], this.value); };
+      row.appendChild(btn);
+      row.appendChild(inp);
+      card.appendChild(row);
+    });
+
+    var st = document.createElement('div');
+    st.className = 'pc-status';
+    function line(text, cls) {
+      var d = document.createElement('div');
+      if (cls) d.className = cls;
+      d.textContent = text;
+      st.appendChild(d);
+    }
+    if (!pu['in'] && !pu.out) {
+      line('未打刻');
+    } else {
+      if (pu['in']) line(r.late > 0 ? '遅刻 ' + r.late + '分' : '遅刻なし', r.late > 0 ? 'warn' : 'good');
+      if (pu.out) {
+        if (r.early > 0) line('早退 ' + r.early + '分', 'warn');
+        else if (r.over > 0) line('残業 ' + r.over + '分', 'good');
+        else line('定時で退勤', 'good');
+      }
+      if (r.done) line('実働 ' + fmtMin(r.actualMin));
+      else if (pu['in']) line('勤務中(退勤の打刻待ち)');
+    }
+    if (p.pay > 0) {
+      if (p.payType === 'monthly') {
+        line('月給は「月の集計」に含まれます');
+      } else {
+        line('給与 見込み ' + yen(r.plannedPay) + (r.done ? ' / 実績 ' + yen(r.actualPay) : ''));
+      }
+    }
+    card.appendChild(st);
+    box.appendChild(card);
+  });
+}
+
+/* ---------- 月の集計 ---------- */
+function renderSummary() {
+  var y = current.getFullYear();
+  var m = current.getMonth();
+  document.getElementById('sumTitle').textContent = (m + 1) + '月の集計';
+  var body = document.getElementById('sumBody');
+  body.innerHTML = '';
+  var prefix = y + '-' + pad(m + 1) + '-';
+  var groups = {};
+  var order = [];
+
+  Object.keys(shifts).forEach(function (key) {
+    if (key.indexOf(prefix) !== 0) return;
+    shifts[key].forEach(function (pid) {
+      var p = findPattern(pid);
+      if (!p) return;
+      var gk = p.job ? 'j:' + p.job : 'p:' + p.id;
+      var g = groups[gk];
+      if (!g) {
+        g = groups[gk] = { name: p.job || p.name, days: 0, pMin: 0, aMin: 0, pPay: 0, aPay: 0, late: 0, early: 0, monthly: 0 };
+        order.push(gk);
+      }
+      var r = calcShift(key, p);
+      g.days++;
+      g.pMin += r.plannedMin;
+      g.aMin += r.actualMin;
+      g.late += r.late;
+      g.early += r.early;
+      if (p.payType === 'monthly') {
+        if (p.pay > g.monthly) g.monthly = p.pay;
+      } else {
+        g.pPay += r.plannedPay;
+        g.aPay += r.actualPay;
+      }
+    });
+  });
+
+  var rows = [];
+  var tPMin = 0, tAMin = 0, tPPay = 0, tAPay = 0, tLate = 0, tEarly = 0;
+  order.forEach(function (gk) {
+    var g = groups[gk];
+    g.pPay += g.monthly;
+    g.aPay += g.monthly;
+    if (g.pMin > 0 || g.aMin > 0 || g.pPay > 0) {
+      rows.push(g);
+      tPMin += g.pMin; tAMin += g.aMin; tPPay += g.pPay; tAPay += g.aPay;
+      tLate += g.late; tEarly += g.early;
+    }
+  });
+
+  if (!rows.length) {
+    body.appendChild(noteEl('集計できるシフトがありません(時間のあるシフトを割り当てて、下の「シフトの種類」で金額を設定してください)'));
+    return;
+  }
+
+  var tot = document.createElement('div');
+  tot.className = 'sum-total';
+  [['見込み', yen(tPPay), fmtMin(tPMin)], ['実績', yen(tAPay), fmtMin(tAMin)]].forEach(function (x) {
+    var box = document.createElement('div');
+    box.className = 'sum-box';
+    var a = document.createElement('span'); a.textContent = x[0];
+    var b = document.createElement('b'); b.textContent = x[1];
+    var c = document.createElement('span'); c.textContent = x[2];
+    box.appendChild(a); box.appendChild(b); box.appendChild(c);
+    tot.appendChild(box);
+  });
+  body.appendChild(tot);
+
+  var lateLine = document.createElement('div');
+  lateLine.className = 'small';
+  lateLine.style.marginBottom = '6px';
+  lateLine.textContent = '遅刻 合計' + tLate + '分 / 早退 合計' + tEarly + '分';
+  body.appendChild(lateLine);
+
+  rows.forEach(function (g) {
+    var row = document.createElement('div');
+    row.className = 'sum-row';
+    var l = document.createElement('div');
+    var l1 = document.createElement('div');
+    l1.textContent = g.name + '(' + g.days + '日)' + (g.monthly > 0 ? ' 月給' : '');
+    var l2 = document.createElement('div');
+    l2.className = 'sub';
+    l2.textContent = '予定 ' + fmtMin(g.pMin) + ' / 実績 ' + fmtMin(g.aMin);
+    l.appendChild(l1); l.appendChild(l2);
+    var rr = document.createElement('div');
+    rr.className = 'r';
+    var r1 = document.createElement('div');
+    r1.textContent = '見込み ' + yen(g.pPay);
+    var r2 = document.createElement('div');
+    r2.textContent = '実績 ' + yen(g.aPay);
+    rr.appendChild(r1); rr.appendChild(r2);
+    row.appendChild(l); row.appendChild(rr);
+    body.appendChild(row);
+  });
+}
+
+/* ---------- 予定 ---------- */
 function renderEvents() {
   var title = document.getElementById('eventTitle');
   var list = document.getElementById('eventList');
@@ -382,19 +728,13 @@ function renderEvents() {
   ids.forEach(function (id) { document.getElementById(id).disabled = !selected; });
   if (!selected) {
     title.textContent = '予定';
-    var hint = document.createElement('div');
-    hint.className = 'todo-empty';
-    hint.textContent = '日付をタップすると予定を追加できます';
-    list.appendChild(hint);
+    list.appendChild(noteEl('日付をタップすると予定を追加できます'));
     return;
   }
   title.textContent = selected + ' の予定';
   var evs = dayEvents(selected);
   if (!evs.length) {
-    var none = document.createElement('div');
-    none.className = 'todo-empty';
-    none.textContent = '予定はありません';
-    list.appendChild(none);
+    list.appendChild(noteEl('予定はありません'));
     return;
   }
   evs.forEach(function (ev) {
@@ -489,11 +829,16 @@ function renderTodos() {
     list.appendChild(item);
   });
   if (!count) {
-    var empty = document.createElement('div');
-    empty.className = 'todo-empty';
-    empty.textContent = 'ToDoはありません';
-    list.appendChild(empty);
+    list.appendChild(noteEl('ToDoはありません'));
   }
+}
+
+/* ---------- シフトの種類 ---------- */
+function refreshDerived() {
+  renderCalendar();
+  renderAssign();
+  renderPunch();
+  renderSummary();
 }
 
 function renderPatterns() {
@@ -507,6 +852,8 @@ function renderPatterns() {
     row1.className = 'row';
     var row2 = document.createElement('div');
     row2.className = 'row';
+    var row3 = document.createElement('div');
+    row3.className = 'row';
 
     var color = document.createElement('input');
     color.type = 'color';
@@ -517,7 +864,7 @@ function renderPatterns() {
     name.type = 'text';
     name.value = p.name;
     name.placeholder = '名前(早番など)';
-    name.onchange = function () { p.name = this.value || '名称なし'; save(); renderCalendar(); renderAssign(); };
+    name.onchange = function () { p.name = this.value || '名称なし'; save(); refreshDerived(); };
 
     var del = document.createElement('button');
     del.className = 'del';
@@ -529,6 +876,9 @@ function renderPatterns() {
         shifts[k] = shifts[k].filter(function (id) { return id !== p.id; });
         if (!shifts[k].length) delete shifts[k];
       }
+      for (var pk in punches) {
+        if (pk.split('|')[1] === p.id) delete punches[pk];
+      }
       save();
       renderAll();
     };
@@ -537,17 +887,43 @@ function renderPatterns() {
     job.type = 'text';
     job.value = p.job || '';
     job.placeholder = '職場(任意)';
-    job.onchange = function () { p.job = this.value.trim(); save(); renderCalendar(); renderAssign(); };
+    job.onchange = function () { p.job = this.value.trim(); save(); refreshDerived(); };
 
     var st = document.createElement('input');
     st.type = 'time';
     st.value = p.start;
-    st.onchange = function () { p.start = this.value; save(); renderCalendar(); renderAssign(); };
+    st.onchange = function () { p.start = this.value; save(); refreshDerived(); };
 
     var en = document.createElement('input');
     en.type = 'time';
     en.value = p.end;
-    en.onchange = function () { p.end = this.value; save(); renderAssign(); };
+    en.onchange = function () { p.end = this.value; save(); refreshDerived(); };
+
+    var pt = document.createElement('select');
+    [['hourly', '時給'], ['daily', '日給'], ['monthly', '月給']].forEach(function (o) {
+      var op = document.createElement('option');
+      op.value = o[0];
+      op.textContent = o[1];
+      pt.appendChild(op);
+    });
+    pt.value = p.payType;
+    pt.onchange = function () { p.payType = this.value; save(); refreshDerived(); };
+
+    var pay = document.createElement('input');
+    pay.type = 'number';
+    pay.inputMode = 'numeric';
+    pay.min = '0';
+    pay.value = p.pay > 0 ? p.pay : '';
+    pay.placeholder = '金額(円)';
+    pay.onchange = function () { p.pay = Math.max(0, Number(this.value) || 0); save(); refreshDerived(); };
+
+    var brk = document.createElement('input');
+    brk.type = 'number';
+    brk.inputMode = 'numeric';
+    brk.min = '0';
+    brk.value = p.breakMin > 0 ? p.breakMin : '';
+    brk.placeholder = '休憩(分)';
+    brk.onchange = function () { p.breakMin = Math.max(0, Number(this.value) || 0); save(); refreshDerived(); };
 
     row1.appendChild(color);
     row1.appendChild(name);
@@ -555,8 +931,12 @@ function renderPatterns() {
     row2.appendChild(job);
     row2.appendChild(st);
     row2.appendChild(en);
+    row3.appendChild(pt);
+    row3.appendChild(pay);
+    row3.appendChild(brk);
     card.appendChild(row1);
     card.appendChild(row2);
+    card.appendChild(row3);
     box.appendChild(card);
   });
 }
@@ -564,9 +944,11 @@ function renderPatterns() {
 function renderAll() {
   renderCalendar();
   renderAssign();
+  renderPunch();
   renderEvents();
   renderMemo();
   renderTodos();
+  renderSummary();
   renderPatterns();
 }
 
@@ -603,13 +985,14 @@ function showMsg(text, ok) {
 function buildBackup() {
   return JSON.stringify({
     app: 'shift-app',
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     patterns: patterns,
     shifts: shifts,
     memos: memos,
     todos: todos,
-    events: events
+    events: events,
+    punches: punches
   });
 }
 
@@ -634,11 +1017,14 @@ function restoreFrom(text) {
     showMsg('このアプリのバックアップではありません。', false);
     return;
   }
+  var newPatterns = normalizePatterns(data.patterns);
   var newShifts = normalizeShifts(data.shifts);
   var newEvents = normalizeEvents(data.events);
+  var newPunches = normalizePunches(data.punches);
   var msg = 'バックアップを復元します。今のデータは上書きされます。\n\n' +
-    'シフトの種類:' + data.patterns.length + '件\n' +
+    'シフトの種類:' + newPatterns.length + '件\n' +
     'シフト:' + Object.keys(newShifts).length + '日分\n' +
+    '打刻:' + Object.keys(newPunches).length + '件\n' +
     '予定:' + newEvents.length + '件\n' +
     'メモ:' + Object.keys(data.memos).length + '件\n' +
     'ToDo:' + data.todos.length + '件\n\nよろしいですか?';
@@ -646,11 +1032,12 @@ function restoreFrom(text) {
     showMsg('復元をキャンセルしました。', false);
     return;
   }
-  patterns = data.patterns;
+  patterns = newPatterns;
   shifts = newShifts;
   memos = data.memos;
   todos = data.todos;
   events = newEvents;
+  punches = newPunches;
   selected = null;
   save();
   renderAll();
@@ -765,6 +1152,7 @@ document.getElementById('todoUnselect').onclick = function () {
   selected = null;
   renderCalendar();
   renderAssign();
+  renderPunch();
   renderEvents();
   renderMemo();
   renderTodos();
@@ -773,13 +1161,15 @@ document.getElementById('todoUnselect').onclick = function () {
 document.getElementById('prev').onclick = function () {
   current.setMonth(current.getMonth() - 1);
   renderCalendar();
+  renderSummary();
 };
 document.getElementById('next').onclick = function () {
   current.setMonth(current.getMonth() + 1);
   renderCalendar();
+  renderSummary();
 };
 document.getElementById('addPattern').onclick = function () {
-  patterns.push({ id: 'p' + Date.now(), name: '新しいシフト', job: '', color: '#ec4899', start: '09:00', end: '17:00' });
+  patterns.push({ id: 'p' + Date.now(), name: '新しいシフト', job: '', color: '#ec4899', start: '09:00', end: '17:00', payType: 'hourly', pay: 0, breakMin: 0 });
   save();
   renderAll();
 };
