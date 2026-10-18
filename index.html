@@ -18,7 +18,7 @@
   .day.selected { background: #dbeafe; }
   .sun { color: #d33; }
   .sat { color: #0a60d3; }
-  .tag { display: block; margin-top: 2px; font-size: 10px; color: #fff; border-radius: 4px; padding: 1px 2px; text-align: center; white-space: nowrap; overflow: hidden; }
+  .tag { display: block; margin-top: 2px; font-size: 10px; color: #fff; border-radius: 4px; padding: 1px 2px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .memo-mark { font-size: 10px; margin-left: 2px; }
   .todo-dot { display: inline-block; width: 7px; height: 7px; background: #0a84ff; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
   .panel { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; }
@@ -30,6 +30,8 @@
   .row input[type=text] { flex: 1; min-width: 0; font-size: 16px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
   .row input[type=time] { font-size: 14px; }
   .row input[type=color] { width: 36px; height: 32px; border: none; padding: 0; background: none; }
+  .pcard { padding: 8px 0; border-bottom: 1px solid #eee; }
+  .pcard:last-child { border-bottom: none; }
   .del { border: none; background: #fee; color: #c00; border-radius: 6px; padding: 6px 10px; }
   .add { border: none; background: #0a84ff; color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 14px; margin-top: 4px; }
   .add.sub { background: #e5e7eb; color: #111; }
@@ -66,6 +68,7 @@
 <div class="panel" id="assign">
   <h2 id="assignTitle">日付をタップしてください</h2>
   <div class="chips" id="chips"></div>
+  <p class="small" id="assignHint" style="display:none">複数選べます(かけもちOK)。もう一度タップで解除。</p>
 </div>
 
 <div class="panel">
@@ -87,7 +90,7 @@
   <h2>シフトの種類</h2>
   <div id="patterns"></div>
   <button class="add" id="addPattern">+ 種類を追加</button>
-  <p class="small">名前・色・時間を変更すると自動保存されます</p>
+  <p class="small">職場名・名前・色・時間を変更すると自動保存されます。かけもちの場合は、職場ごとに種類を作ってください。</p>
 </div>
 
 <div class="panel">
@@ -114,9 +117,19 @@ var selected = null;
 var dows = ['日','月','火','水','木','金','土'];
 
 var patterns = [];
-var shifts = {};
+var shifts = {};   // { 'YYYY-MM-DD': ['p1','p2'] }
 var memos = {};
 var todos = [];
+
+function normalizeShifts(obj) {
+  var out = {};
+  for (var k in obj) {
+    var v = obj[k];
+    if (typeof v === 'string') v = [v];
+    if (Array.isArray(v) && v.length) out[k] = v.filter(function (x) { return typeof x === 'string'; });
+  }
+  return out;
+}
 
 function load() {
   try {
@@ -125,15 +138,15 @@ function load() {
     var m = localStorage.getItem('shift_memos');
     var t = localStorage.getItem('shift_todos');
     if (p) patterns = JSON.parse(p);
-    if (s) shifts = JSON.parse(s);
+    if (s) shifts = normalizeShifts(JSON.parse(s));
     if (m) memos = JSON.parse(m);
     if (t) todos = JSON.parse(t);
   } catch (e) {}
   if (!patterns.length) {
     patterns = [
-      { id: 'p1', name: '早番', color: '#f59e0b', start: '08:00', end: '16:00' },
-      { id: 'p2', name: '遅番', color: '#6366f1', start: '14:00', end: '22:00' },
-      { id: 'p3', name: '休み', color: '#10b981', start: '', end: '' }
+      { id: 'p1', name: '早番', job: '', color: '#f59e0b', start: '08:00', end: '16:00' },
+      { id: 'p2', name: '遅番', job: '', color: '#6366f1', start: '14:00', end: '22:00' },
+      { id: 'p3', name: '休み', job: '', color: '#10b981', start: '', end: '' }
     ];
   }
 }
@@ -150,6 +163,23 @@ function pad(n) { return n < 10 ? '0' + n : '' + n; }
 function findPattern(id) {
   for (var i = 0; i < patterns.length; i++) if (patterns[i].id === id) return patterns[i];
   return null;
+}
+function patLabel(p) {
+  return (p.job ? p.job + ' ' : '') + p.name;
+}
+function dayPatterns(key) {
+  var ids = shifts[key] || [];
+  var list = [];
+  ids.forEach(function (id) {
+    var p = findPattern(id);
+    if (p) list.push(p);
+  });
+  list.sort(function (a, b) {
+    var x = a.start || '99:99';
+    var y = b.start || '99:99';
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+  return list;
 }
 function hasOpenTodo(key) {
   for (var i = 0; i < todos.length; i++) {
@@ -207,14 +237,13 @@ function renderCalendar() {
       cell.appendChild(dot);
     }
 
-    var pat = shifts[key] ? findPattern(shifts[key]) : null;
-    if (pat) {
+    dayPatterns(key).forEach(function (pat) {
       var tag = document.createElement('span');
       tag.className = 'tag';
       tag.style.background = pat.color;
-      tag.textContent = pat.name;
+      tag.textContent = patLabel(pat);
       cell.appendChild(tag);
-    }
+    });
 
     cell.setAttribute('data-key', key);
     cell.onclick = function () {
@@ -231,19 +260,30 @@ function renderCalendar() {
 function renderAssign() {
   var title = document.getElementById('assignTitle');
   var chips = document.getElementById('chips');
+  var hint = document.getElementById('assignHint');
   chips.innerHTML = '';
-  if (!selected) { title.textContent = '日付をタップしてください'; return; }
+  if (!selected) {
+    title.textContent = '日付をタップしてください';
+    hint.style.display = 'none';
+    return;
+  }
   title.textContent = selected + ' のシフト';
+  hint.style.display = 'block';
 
   patterns.forEach(function (p) {
+    var ids = shifts[selected] || [];
+    var on = ids.indexOf(p.id) >= 0;
     var b = document.createElement('button');
-    b.className = 'chip' + (shifts[selected] === p.id ? '' : ' off');
+    b.className = 'chip' + (on ? '' : ' off');
     b.style.background = p.color;
-    var label = p.name + (p.start ? ' ' + p.start + '-' + p.end : '');
-    b.textContent = label;
+    b.textContent = patLabel(p) + (p.start ? ' ' + p.start + '-' + p.end : '');
     b.onclick = function () {
-      if (shifts[selected] === p.id) delete shifts[selected];
-      else shifts[selected] = p.id;
+      var cur = (shifts[selected] || []).slice();
+      var pos = cur.indexOf(p.id);
+      if (pos >= 0) cur.splice(pos, 1);
+      else cur.push(p.id);
+      if (cur.length) shifts[selected] = cur;
+      else delete shifts[selected];
       save();
       renderCalendar();
       renderAssign();
@@ -333,8 +373,13 @@ function renderPatterns() {
   var box = document.getElementById('patterns');
   box.innerHTML = '';
   patterns.forEach(function (p, idx) {
-    var row = document.createElement('div');
-    row.className = 'row';
+    var card = document.createElement('div');
+    card.className = 'pcard';
+
+    var row1 = document.createElement('div');
+    row1.className = 'row';
+    var row2 = document.createElement('div');
+    row2.className = 'row';
 
     var color = document.createElement('input');
     color.type = 'color';
@@ -344,35 +389,48 @@ function renderPatterns() {
     var name = document.createElement('input');
     name.type = 'text';
     name.value = p.name;
+    name.placeholder = '名前(早番など)';
     name.onchange = function () { p.name = this.value || '名称なし'; save(); renderCalendar(); renderAssign(); };
+
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '削除';
+    del.onclick = function () {
+      if (!confirm('「' + patLabel(p) + '」を削除しますか?')) return;
+      patterns.splice(idx, 1);
+      for (var k in shifts) {
+        shifts[k] = shifts[k].filter(function (id) { return id !== p.id; });
+        if (!shifts[k].length) delete shifts[k];
+      }
+      save();
+      renderAll();
+    };
+
+    var job = document.createElement('input');
+    job.type = 'text';
+    job.value = p.job || '';
+    job.placeholder = '職場(任意)';
+    job.onchange = function () { p.job = this.value.trim(); save(); renderCalendar(); renderAssign(); };
 
     var st = document.createElement('input');
     st.type = 'time';
     st.value = p.start;
-    st.onchange = function () { p.start = this.value; save(); renderAssign(); };
+    st.onchange = function () { p.start = this.value; save(); renderCalendar(); renderAssign(); };
 
     var en = document.createElement('input');
     en.type = 'time';
     en.value = p.end;
     en.onchange = function () { p.end = this.value; save(); renderAssign(); };
 
-    var del = document.createElement('button');
-    del.className = 'del';
-    del.textContent = '削除';
-    del.onclick = function () {
-      if (!confirm('「' + p.name + '」を削除しますか?')) return;
-      patterns.splice(idx, 1);
-      for (var k in shifts) { if (shifts[k] === p.id) delete shifts[k]; }
-      save();
-      renderAll();
-    };
-
-    row.appendChild(color);
-    row.appendChild(name);
-    row.appendChild(st);
-    row.appendChild(en);
-    row.appendChild(del);
-    box.appendChild(row);
+    row1.appendChild(color);
+    row1.appendChild(name);
+    row1.appendChild(del);
+    row2.appendChild(job);
+    row2.appendChild(st);
+    row2.appendChild(en);
+    card.appendChild(row1);
+    card.appendChild(row2);
+    box.appendChild(card);
   });
 }
 
@@ -394,7 +452,7 @@ function showMsg(text, ok) {
 function buildBackup() {
   return JSON.stringify({
     app: 'shift-app',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     patterns: patterns,
     shifts: shifts,
@@ -424,9 +482,10 @@ function restoreFrom(text) {
     showMsg('このアプリのバックアップではありません。', false);
     return;
   }
+  var newShifts = normalizeShifts(data.shifts);
   var msg = 'バックアップを復元します。今のデータは上書きされます。\n\n' +
     'シフトの種類:' + data.patterns.length + '件\n' +
-    'シフト:' + Object.keys(data.shifts).length + '日分\n' +
+    'シフト:' + Object.keys(newShifts).length + '日分\n' +
     'メモ:' + Object.keys(data.memos).length + '件\n' +
     'ToDo:' + data.todos.length + '件\n\nよろしいですか?';
   if (!confirm(msg)) {
@@ -434,7 +493,7 @@ function restoreFrom(text) {
     return;
   }
   patterns = data.patterns;
-  shifts = data.shifts;
+  shifts = newShifts;
   memos = data.memos;
   todos = data.todos;
   selected = null;
@@ -564,7 +623,7 @@ document.getElementById('next').onclick = function () {
   renderCalendar();
 };
 document.getElementById('addPattern').onclick = function () {
-  patterns.push({ id: 'p' + Date.now(), name: '新しいシフト', color: '#ec4899', start: '09:00', end: '17:00' });
+  patterns.push({ id: 'p' + Date.now(), name: '新しいシフト', job: '', color: '#ec4899', start: '09:00', end: '17:00' });
   save();
   renderAll();
 };
