@@ -512,5 +512,97 @@ function renderLook(){
 var _ral=renderAll;
 renderAll=function(){_ral();applyLook();renderLook()};
 /* ===== /第10段階 ===== */
+/* ===== 第11段階:月のシフト表示 ===== */
+var mCss=document.createElement('style');
+mCss.textContent=`
+.mrow{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);font-size:calc(14px*var(--fs))}
+.mrow .dd{width:78px;flex-shrink:0;font-weight:bold}
+.mrow .ms{flex:1;min-width:0}
+.mrow .ms div{margin:2px 0}
+.mrow.tdy{background:var(--soft);border-radius:8px;padding-left:6px}
+.dchip{border:none;background:var(--soft);color:var(--m);border-radius:10px;padding:calc(4px*var(--bs)) calc(8px*var(--bs));font-size:calc(13px*var(--fs));margin:2px 4px 2px 0}
+.mg{padding:8px 0;border-bottom:1px solid var(--line);font-size:calc(14px*var(--fs))}
+.mg .gh{display:flex;justify-content:space-between;gap:8px;font-weight:bold}
+.mg .gp{margin:6px 0 0 4px}
+.msum{font-size:calc(13px*var(--fs));margin:4px 0 8px;line-height:1.6}
+`;
+document.head.appendChild(mCss);
+
+var mDet=E('details',{className:'ac',id:'ac-month'},[E('summary',{text:'📋 月のシフト'}),E('div',{className:'in',id:'monthBody'})]);
+$('ac-shift').after(mDet);
+var mTab=E('button',{onclick:function(){if(mDet.classList.contains('pop'))closePop();else openPop('ac-month')}},[E('b',{text:'📋'}),document.createTextNode('月表示')]);
+mTab.setAttribute('data-id','ac-month');
+tabbar.insertBefore(mTab,tabbar.children[1]);
+mDet.firstChild.addEventListener('click',function(e){if(settings.style==='idx'){e.preventDefault();closePop()}});
+
+var mMode='list';
+try{mMode=localStorage.getItem('shift_monthmode')==='grp'?'grp':'list'}catch(e){}
+
+function renderMonth(){
+  var b=$('monthBody');b.innerHTML='';
+  var y=cur.getFullYear(),m=cur.getMonth(),pre=y+'-'+pad(m+1)+'-',last=new Date(y,m+1,0).getDate();
+  b.appendChild(E('div',{className:'nav'},[
+    E('button',{text:'◀',onclick:function(){chm(-1)}}),
+    E('b',{text:y+'年'+(m+1)+'月'}),
+    E('button',{text:'▶',onclick:function(){chm(1)}})]));
+  b.appendChild(E('div',{className:'chips',style:'margin-bottom:8px'},
+    [['list','日付ごと'],['grp','職場・種類ごと']].map(function(o){
+      return E('button',{className:'fb'+(mMode===o[0]?' on':''),text:o[1],onclick:function(){
+        mMode=o[0];try{localStorage.setItem('shift_monthmode',mMode)}catch(e){}renderMonth()}});
+    })));
+
+  var days=[],work=0,off=0,pm=0,am=0;
+  for(var d=1;d<=last;d++){
+    var key=pre+pad(d),ps=dayPats(key);
+    if(!ps.length)continue;
+    days.push({key:key,d:d,ps:ps});
+    var timed=false;
+    ps.forEach(function(p){var r=calc(key,p);if(p.start&&p.end)timed=true;pm+=r.plan;am+=r.act});
+    if(timed)work++;else off++;
+  }
+  if(!days.length){b.appendChild(note('この月のシフトはありません'));return}
+  b.appendChild(E('div',{className:'msum',text:'出勤 '+work+'日 / 休み等 '+off+'日 / 予定 '+fm(pm)+' / 実績 '+fm(am)}));
+
+  if(mMode==='list'){
+    days.forEach(function(o){
+      var w=new Date(y,m,o.d).getDay();
+      var ms=E('div',{className:'ms'});
+      o.ps.forEach(function(p){
+        var u=punches[o.key+'|'+p.id];
+        var t=' '+plabel(p)+(p.start?' '+p.start+'-'+p.end:'');
+        if(u&&(u['in']||u.out))t+=' 〔打刻 '+(u['in']||'--:--')+'-'+(u.out||'--:--')+'〕';
+        ms.appendChild(E('div',{},[E('i',{className:'dt',style:'background:'+p.color}),document.createTextNode(t)]));
+      });
+      b.appendChild(E('div',{className:'mrow'+(o.key===tk()?' tdy':''),onclick:function(){go('ac-shift',o.key)}},[
+        E('div',{className:'dd'+(w===0?' sun':w===6?' sat':''),text:(m+1)+'/'+o.d+'('+dows[w]+')'}),ms]));
+    });
+  }else{
+    var g={},ord=[];
+    days.forEach(function(o){o.ps.forEach(function(p){
+      var gk=p.job?'j:'+p.job:'p:'+p.id,x=g[gk];
+      if(!x){x=g[gk]={n:p.job||p.name,pats:{},po:[],days:{},pm:0,am:0};ord.push(gk)}
+      var r=calc(o.key,p);x.pm+=r.plan;x.am+=r.act;x.days[o.key]=1;
+      var q=x.pats[p.id];if(!q){q=x.pats[p.id]={p:p,ds:[]};x.po.push(p.id)}
+      q.ds.push(o);
+    })});
+    ord.forEach(function(gk){
+      var x=g[gk],card=E('div',{className:'mg'});
+      card.appendChild(E('div',{className:'gh'},[
+        E('span',{text:x.n+'('+Object.keys(x.days).length+'日)'}),
+        E('span',{style:'font-weight:normal;text-align:right',text:x.pm?'予定 '+fm(x.pm)+(x.am?' / 実績 '+fm(x.am):''):''})]));
+      x.po.forEach(function(id){
+        var q=x.pats[id],p=q.p,line=E('div',{className:'gp'});
+        line.appendChild(E('div',{},[E('i',{className:'dt',style:'background:'+p.color}),document.createTextNode(' '+p.name+(p.start?' '+p.start+'-'+p.end:'')+'('+q.ds.length+'日)')]));
+        q.ds.forEach(function(o){line.appendChild(E('button',{className:'dchip',text:o.d+'日',onclick:function(){go('ac-shift',o.key)}}))});
+        card.appendChild(line);
+      });
+      b.appendChild(card);
+    });
+  }
+}
+var _rsM=renderSum;
+renderSum=function(){_rsM();renderMonth()};
+renderMonth();
+/* ===== /第11段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
