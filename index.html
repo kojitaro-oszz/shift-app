@@ -4,9 +4,97 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>シフト管理</title>
+<style>
+  body { font-family: -apple-system, sans-serif; margin: 0; padding: 12px; background: #f5f5f7; }
+  h1 { font-size: 18px; text-align: center; margin: 4px 0 12px; }
+  .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .nav button { font-size: 18px; padding: 8px 16px; border: none; border-radius: 8px; background: #fff; }
+  #title { font-size: 17px; font-weight: bold; }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .dow { text-align: center; font-size: 12px; color: #666; padding: 4px 0; }
+  .day { background: #fff; border-radius: 8px; min-height: 52px; padding: 4px; font-size: 14px; border: 2px solid transparent; }
+  .day.empty { background: transparent; }
+  .day.today { border-color: #0a84ff; }
+  .day.selected { background: #dbeafe; }
+  .sun { color: #d33; }
+  .sat { color: #0a60d3; }
+  #info { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; text-align: center; }
+</style>
 </head>
 <body>
 <h1>シフト管理アプリ</h1>
-<p>公開テスト成功!</p>
+<div class="nav">
+  <button id="prev">◀</button>
+  <span id="title"></span>
+  <button id="next">▶</button>
+</div>
+<div class="grid" id="grid"></div>
+<div id="info">日付をタップしてください</div>
+
+<script>
+var current = new Date();
+current.setDate(1);
+var selected = null;
+var dows = ['日','月','火','水','木','金','土'];
+
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+function render() {
+  var y = current.getFullYear();
+  var m = current.getMonth();
+  document.getElementById('title').textContent = y + '年' + (m + 1) + '月';
+  var grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  for (var i = 0; i < 7; i++) {
+    var d = document.createElement('div');
+    d.className = 'dow' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '');
+    d.textContent = dows[i];
+    grid.appendChild(d);
+  }
+
+  var firstDow = new Date(y, m, 1).getDay();
+  var lastDate = new Date(y, m + 1, 0).getDate();
+  var now = new Date();
+  var todayKey = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+
+  for (var e = 0; e < firstDow; e++) {
+    var empty = document.createElement('div');
+    empty.className = 'day empty';
+    grid.appendChild(empty);
+  }
+
+  for (var day = 1; day <= lastDate; day++) {
+    var key = y + '-' + pad(m + 1) + '-' + pad(day);
+    var cell = document.createElement('div');
+    var dow = new Date(y, m, day).getDay();
+    var cls = 'day';
+    if (dow === 0) cls += ' sun';
+    if (dow === 6) cls += ' sat';
+    if (key === todayKey) cls += ' today';
+    if (key === selected) cls += ' selected';
+    cell.className = cls;
+    cell.textContent = day;
+    cell.setAttribute('data-key', key);
+    cell.onclick = function () {
+      selected = this.getAttribute('data-key');
+      document.getElementById('info').textContent = '選択中:' + selected;
+      render();
+    };
+    grid.appendChild(cell);
+  }
+}
+
+document.getElementById('prev').onclick = function () {
+  current.setMonth(current.getMonth() - 1);
+  render();
+};
+document.getElementById('next').onclick = function () {
+  current.setMonth(current.getMonth() + 1);
+  render();
+};
+
+render();
+</script>
 </body>
 </html>
