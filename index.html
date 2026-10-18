@@ -6,13 +6,15 @@
 <title>シフト管理</title>
 <style>
   body { font-family: -apple-system, sans-serif; margin: 0; padding: 12px; background: #f5f5f7; }
+  button, input, select, textarea { font-family: inherit; }
+  #bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0.35; pointer-events: none; }
   h1 { font-size: 18px; text-align: center; margin: 4px 0 12px; }
   .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .nav button { font-size: 18px; padding: 8px 16px; border: none; border-radius: 8px; background: #fff; }
+  .nav button { font-size: 18px; padding: 8px 16px; border: none; border-radius: 8px; background: rgba(255,255,255,0.9); }
   #title { font-size: 17px; font-weight: bold; }
   .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-  .dow { text-align: center; font-size: 12px; color: #666; padding: 4px 0; }
-  .day { background: #fff; border-radius: 8px; min-height: 58px; padding: 3px; font-size: 13px; border: 2px solid transparent; overflow: hidden; }
+  .dow { text-align: center; font-size: 12px; color: #666; padding: 4px 0; background: rgba(255,255,255,0.6); border-radius: 6px; }
+  .day { background: rgba(255,255,255,0.9); border-radius: 8px; min-height: 58px; padding: 3px; font-size: 13px; border: 2px solid transparent; overflow: hidden; }
   .day.empty { background: transparent; }
   .day.today { border-color: #0a84ff; }
   .day.selected { background: #dbeafe; }
@@ -23,11 +25,14 @@
   .more { display: block; margin-top: 2px; font-size: 10px; color: #666; text-align: center; }
   .memo-mark { font-size: 10px; margin-left: 2px; }
   .todo-dot { display: inline-block; width: 7px; height: 7px; background: #0a84ff; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
-  .panel { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; }
+  .panel { margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.88); border-radius: 8px; }
   .panel h2 { font-size: 15px; margin: 0 0 8px; }
+  .panel h3 { font-size: 13px; margin: 0 0 6px; color: #444; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { border: none; color: #fff; padding: 8px 12px; border-radius: 16px; font-size: 14px; }
   .chip.off { background: #999 !important; }
+  .fontbtn { border: 2px solid #ddd; background: #fff; color: #111; border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+  .fontbtn.on { border-color: #0a84ff; background: #eaf3ff; }
   .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
   .row input[type=text] { flex: 1; min-width: 0; font-size: 16px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
   .row input[type=number] { flex: 1; min-width: 0; font-size: 16px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; }
@@ -40,6 +45,7 @@
   .add { border: none; background: #0a84ff; color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 14px; margin-top: 4px; }
   .add:disabled { background: #bbb; }
   .add.sub { background: #e5e7eb; color: #111; }
+  .add.sub:disabled { background: #eee; color: #aaa; }
   .small { font-size: 12px; color: #666; margin: 4px 0 0; }
   #memoText { width: 100%; box-sizing: border-box; min-height: 90px; font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; resize: vertical; }
   #memoText:disabled { background: #f0f0f0; }
@@ -68,6 +74,8 @@
   #backupMsg { font-size: 13px; margin: 8px 0 0; min-height: 18px; }
   #backupMsg.ok { color: #0a7d3b; }
   #backupMsg.ng { color: #c00; }
+  #bgMsg.ok { color: #0a7d3b; }
+  #bgMsg.ng { color: #c00; }
   .pc { padding: 8px 0; border-bottom: 1px solid #eee; }
   .pc:last-child { border-bottom: none; }
   .pc-head { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-bottom: 6px; font-weight: bold; }
@@ -88,6 +96,7 @@
 </style>
 </head>
 <body>
+<div id="bg"></div>
 <h1>シフト管理アプリ</h1>
 <div class="nav">
   <button id="prev">◀</button>
@@ -151,6 +160,26 @@
 </div>
 
 <div class="panel">
+  <h2>見た目</h2>
+  <h3 id="bgLabel">背景写真</h3>
+  <div class="btns">
+    <button class="add" id="bgPick">写真を選ぶ</button>
+    <button class="add sub" id="bgDel">この月の背景を削除</button>
+  </div>
+  <input type="file" id="bgFile" accept="image/*" style="display:none">
+  <div class="row" style="margin-top:10px">
+    <span style="font-size:13px">濃さ</span>
+    <input type="range" id="bgAlpha" min="10" max="70" step="5" style="flex:1">
+    <span id="bgAlphaVal" style="font-size:13px;width:40px;text-align:right"></span>
+  </div>
+  <p id="bgMsg" class="small"></p>
+  <p class="small">背景はカレンダーに表示中の月ごとに設定されます。月を切り替えてから選んでください。</p>
+  <hr class="sep">
+  <h3>フォント</h3>
+  <div class="chips" id="fontList"></div>
+</div>
+
+<div class="panel">
   <h2>バックアップ</h2>
   <div class="btns">
     <button class="add" id="bkFile">ファイルで保存</button>
@@ -164,7 +193,7 @@
   <input type="file" id="rsFile" accept=".json,application/json,text/plain" style="display:none">
   <textarea id="backupText" placeholder="コピーしたテキストを貼り付けてから「テキストから復元」を押します"></textarea>
   <p id="backupMsg"></p>
-  <p class="small">復元すると、今のデータは上書きされます。復元の前に、一度バックアップを取っておくと安心です。</p>
+  <p class="small">復元すると、今のデータは上書きされます。復元の前に、一度バックアップを取っておくと安心です。背景写真はバックアップに含まれません。</p>
 </div>
 
 <script>
@@ -179,6 +208,15 @@ var memos = {};
 var todos = [];
 var events = [];   // [{ id, date, title, start, end, color }]
 var punches = {};  // { 'YYYY-MM-DD|patternId': { in: 'HH:MM', out: 'HH:MM' } }
+var settings = { font: 'std', bgAlpha: 35 };
+
+var FONTS = [
+  { id: 'std',    name: '標準',         css: '-apple-system, "Hiragino Sans", sans-serif' },
+  { id: 'maru',   name: '丸ゴシック',   css: '"Hiragino Maru Gothic ProN", "Hiragino Sans", sans-serif' },
+  { id: 'mincho', name: '明朝',         css: '"Hiragino Mincho ProN", "YuMincho", serif' },
+  { id: 'klee',   name: '手書き風',     css: '"Klee", "Klee One", "Hiragino Maru Gothic ProN", cursive' },
+  { id: 'pop',    name: 'ポップ',       css: '"Marker Felt", "Chalkboard SE", "Hiragino Maru Gothic ProN", sans-serif' }
+];
 
 function defaultPatterns() {
   return [
@@ -242,6 +280,15 @@ function normalizePunches(obj) {
   }
   return out;
 }
+function normalizeSettings(o) {
+  var s = { font: 'std', bgAlpha: 35 };
+  if (o && typeof o === 'object') {
+    if (FONTS.some(function (f) { return f.id === o.font; })) s.font = o.font;
+    var a = Number(o.bgAlpha);
+    if (a >= 10 && a <= 70) s.bgAlpha = Math.round(a);
+  }
+  return s;
+}
 
 function load() {
   try {
@@ -251,12 +298,14 @@ function load() {
     var t = localStorage.getItem('shift_todos');
     var ev = localStorage.getItem('shift_events');
     var pu = localStorage.getItem('shift_punches');
+    var se = localStorage.getItem('shift_settings');
     if (p) patterns = normalizePatterns(JSON.parse(p));
     if (s) shifts = normalizeShifts(JSON.parse(s));
     if (m) memos = JSON.parse(m);
     if (t) todos = JSON.parse(t);
     if (ev) events = normalizeEvents(JSON.parse(ev));
     if (pu) punches = normalizePunches(JSON.parse(pu));
+    if (se) settings = normalizeSettings(JSON.parse(se));
   } catch (e) {}
   if (!patterns.length) patterns = defaultPatterns();
 }
@@ -268,6 +317,7 @@ function save() {
     localStorage.setItem('shift_todos', JSON.stringify(todos));
     localStorage.setItem('shift_events', JSON.stringify(events));
     localStorage.setItem('shift_punches', JSON.stringify(punches));
+    localStorage.setItem('shift_settings', JSON.stringify(settings));
   } catch (e) {}
 }
 
@@ -279,6 +329,9 @@ function todayKey() {
 function nowHM() {
   var n = new Date();
   return pad(n.getHours()) + ':' + pad(n.getMinutes());
+}
+function ymKey(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1);
 }
 function findPattern(id) {
   for (var i = 0; i < patterns.length; i++) if (patterns[i].id === id) return patterns[i];
@@ -322,13 +375,11 @@ function toMin(hm) {
   var a = hm.split(':');
   return parseInt(a[0], 10) * 60 + parseInt(a[1], 10);
 }
-// a から b までの分数(日をまたぐ場合は+24時間)
 function span(a, b) {
   var d = toMin(b) - toMin(a);
   if (d < 0) d += 1440;
   return d;
 }
-// b - a の差(分)。-12時間〜+12時間に収める
 function sdiff(a, b) {
   var d = toMin(b) - toMin(a);
   while (d >= 720) d -= 1440;
@@ -379,6 +430,167 @@ function calcShift(key, p) {
   }
   return r;
 }
+
+/* ---------- 背景写真(IndexedDB) ---------- */
+var bgDB = null;
+var bgHas = false;
+var bgToken = 0;
+
+function openDB(cb) {
+  try {
+    var req = indexedDB.open('shift_app_db', 1);
+    req.onupgradeneeded = function () { req.result.createObjectStore('bg'); };
+    req.onsuccess = function () { bgDB = req.result; cb(true); };
+    req.onerror = function () { cb(false); };
+  } catch (e) { cb(false); }
+}
+function idbGet(key, cb) {
+  if (!bgDB) { cb(null); return; }
+  try {
+    var r = bgDB.transaction('bg', 'readonly').objectStore('bg').get(key);
+    r.onsuccess = function () { cb(r.result || null); };
+    r.onerror = function () { cb(null); };
+  } catch (e) { cb(null); }
+}
+function idbSet(key, val, cb) {
+  if (!bgDB) { cb(false); return; }
+  try {
+    var tx = bgDB.transaction('bg', 'readwrite');
+    tx.objectStore('bg').put(val, key);
+    tx.oncomplete = function () { cb(true); };
+    tx.onerror = function () { cb(false); };
+    tx.onabort = function () { cb(false); };
+  } catch (e) { cb(false); }
+}
+function idbDel(key, cb) {
+  if (!bgDB) { cb(false); return; }
+  try {
+    var tx = bgDB.transaction('bg', 'readwrite');
+    tx.objectStore('bg').delete(key);
+    tx.oncomplete = function () { cb(true); };
+    tx.onerror = function () { cb(false); };
+    tx.onabort = function () { cb(false); };
+  } catch (e) { cb(false); }
+}
+
+function bgMsg(text, ok) {
+  var el = document.getElementById('bgMsg');
+  el.textContent = text;
+  el.className = 'small ' + (ok ? 'ok' : 'ng');
+}
+
+function applyBackground() {
+  var el = document.getElementById('bg');
+  el.style.opacity = settings.bgAlpha / 100;
+  var t = ++bgToken;
+  idbGet(ymKey(current), function (v) {
+    if (t !== bgToken) return;
+    el.style.backgroundImage = v ? 'url("' + v + '")' : 'none';
+    bgHas = !!v;
+    renderBgPanel();
+  });
+}
+
+function renderBgPanel() {
+  document.getElementById('bgLabel').textContent =
+    current.getFullYear() + '年' + (current.getMonth() + 1) + '月の背景写真' + (bgHas ? '(設定済み)' : '(なし)');
+  document.getElementById('bgDel').disabled = !bgHas;
+  document.getElementById('bgAlpha').value = settings.bgAlpha;
+  document.getElementById('bgAlphaVal').textContent = settings.bgAlpha + '%';
+}
+
+function applyFont() {
+  var css = FONTS[0].css;
+  FONTS.forEach(function (f) { if (f.id === settings.font) css = f.css; });
+  document.body.style.fontFamily = css;
+}
+
+function renderFonts() {
+  var box = document.getElementById('fontList');
+  box.innerHTML = '';
+  FONTS.forEach(function (f) {
+    var b = document.createElement('button');
+    b.className = 'fontbtn' + (settings.font === f.id ? ' on' : '');
+    b.style.fontFamily = f.css;
+    b.textContent = f.name + ' 12:30 ¥1,000';
+    b.onclick = function () {
+      settings.font = f.id;
+      save();
+      applyFont();
+      renderFonts();
+    };
+    box.appendChild(b);
+  });
+}
+
+function resizeImage(file, cb) {
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function () {
+    var max = 1400;
+    var w = img.naturalWidth;
+    var h = img.naturalHeight;
+    var sc = Math.min(1, max / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * sc));
+    var ch = Math.max(1, Math.round(h * sc));
+    var cv = document.createElement('canvas');
+    cv.width = cw;
+    cv.height = ch;
+    cv.getContext('2d').drawImage(img, 0, 0, cw, ch);
+    var data = '';
+    try { data = cv.toDataURL('image/jpeg', 0.7); } catch (e) {}
+    URL.revokeObjectURL(url);
+    cb(data);
+  };
+  img.onerror = function () {
+    URL.revokeObjectURL(url);
+    cb('');
+  };
+  img.src = url;
+}
+
+document.getElementById('bgPick').onclick = function () {
+  if (!bgDB) {
+    bgMsg('この環境では背景写真を保存できません(プライベートブラウズなど)。', false);
+    return;
+  }
+  document.getElementById('bgFile').click();
+};
+document.getElementById('bgFile').onchange = function () {
+  var f = this.files && this.files[0];
+  var input = this;
+  if (!f) return;
+  var key = ymKey(current);
+  bgMsg('写真を処理しています…', true);
+  resizeImage(f, function (data) {
+    input.value = '';
+    if (!data) {
+      bgMsg('写真を読み込めませんでした。別の写真でお試しください。', false);
+      return;
+    }
+    idbSet(key, data, function (ok) {
+      if (!ok) {
+        bgMsg('保存に失敗しました。', false);
+        return;
+      }
+      bgMsg('背景を設定しました。', true);
+      applyBackground();
+    });
+  });
+};
+document.getElementById('bgDel').onclick = function () {
+  if (!confirm('この月の背景写真を削除しますか?')) return;
+  idbDel(ymKey(current), function (ok) {
+    bgMsg(ok ? '削除しました。' : '削除に失敗しました。', ok);
+    applyBackground();
+  });
+};
+document.getElementById('bgAlpha').oninput = function () {
+  settings.bgAlpha = Number(this.value);
+  document.getElementById('bg').style.opacity = settings.bgAlpha / 100;
+  document.getElementById('bgAlphaVal').textContent = settings.bgAlpha + '%';
+  save();
+};
 
 /* ---------- カレンダー ---------- */
 function renderCalendar() {
@@ -942,6 +1154,9 @@ function renderPatterns() {
 }
 
 function renderAll() {
+  applyFont();
+  renderFonts();
+  renderBgPanel();
   renderCalendar();
   renderAssign();
   renderPunch();
@@ -985,14 +1200,15 @@ function showMsg(text, ok) {
 function buildBackup() {
   return JSON.stringify({
     app: 'shift-app',
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     patterns: patterns,
     shifts: shifts,
     memos: memos,
     todos: todos,
     events: events,
-    punches: punches
+    punches: punches,
+    settings: settings
   });
 }
 
@@ -1038,9 +1254,11 @@ function restoreFrom(text) {
   todos = data.todos;
   events = newEvents;
   punches = newPunches;
+  if (isPlainObject(data.settings)) settings = normalizeSettings(data.settings);
   selected = null;
   save();
   renderAll();
+  applyBackground();
   document.getElementById('backupText').value = '';
   showMsg('復元しました。', true);
 }
@@ -1158,16 +1376,15 @@ document.getElementById('todoUnselect').onclick = function () {
   renderTodos();
 };
 
-document.getElementById('prev').onclick = function () {
-  current.setMonth(current.getMonth() - 1);
+function changeMonth(delta) {
+  current.setMonth(current.getMonth() + delta);
   renderCalendar();
   renderSummary();
-};
-document.getElementById('next').onclick = function () {
-  current.setMonth(current.getMonth() + 1);
-  renderCalendar();
-  renderSummary();
-};
+  document.getElementById('bgMsg').textContent = '';
+  applyBackground();
+}
+document.getElementById('prev').onclick = function () { changeMonth(-1); };
+document.getElementById('next').onclick = function () { changeMonth(1); };
 document.getElementById('addPattern').onclick = function () {
   patterns.push({ id: 'p' + Date.now(), name: '新しいシフト', job: '', color: '#ec4899', start: '09:00', end: '17:00', payType: 'hourly', pay: 0, breakMin: 0 });
   save();
@@ -1176,6 +1393,7 @@ document.getElementById('addPattern').onclick = function () {
 
 load();
 renderAll();
+openDB(function () { applyBackground(); });
 </script>
 </body>
 </html>
