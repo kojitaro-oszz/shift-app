@@ -1474,5 +1474,79 @@ var _raTx=renderAll;
 renderAll=function(){_raTx();renderTaxCard();renderNet()};
 renderTaxCard();renderNet();
 /* ===== /第17段階 ===== */
+/* ===== 設定のアコーディオン化 / 打刻の時刻入力 ===== */
+var sacCss=document.createElement('style');
+sacCss.textContent='#sheet .card>b:first-child{display:none}'+
+'#sheet .sac .card{background:none;margin:0;padding:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}'+
+'.sac{background:var(--solid);border-radius:18px;margin-top:10px;overflow:hidden}'+
+'.sac>summary{padding:calc(14px*var(--bs));font-weight:bold;font-size:calc(15px*var(--fs));list-style:none}'+
+'.sac>summary::-webkit-details-marker{display:none}'+
+'.sac>summary::after{content:"⌄";float:right;color:var(--m)}'+
+'.sac[open]>summary::after{content:"⌃"}'+
+'.sac>.in{padding:0 14px 14px}'+
+'body.fx-move .sac[open]>.in{animation:fxDown .25s ease-out}';
+document.head.appendChild(sacCss);
+function wrapSac(card,title){
+  if(!card)return null;
+  var d=E('details',{className:'sac'},[E('summary',{text:title}),E('div',{className:'in'})]);
+  card.before(d);
+  d.querySelector('.in').appendChild(card);
+  return d;
+}
+wrapSac($('sheet').querySelector('.card'),'🎨 背景・フォント・スタイル');
+wrapSac($('lookCard'),'🖌 表示の調整(テーマ・文字・ボタン)');
+wrapSac($('fxCard'),'✨ アニメーション');
+wrapSac($('taxCard'),'💰 手取りの計算');
+wrapSac($('delCard'),'🗑 一括削除・選択削除');
+wrapSac($('bkFile').closest('.card'),'💾 バックアップ');
+openTaxSettings=function(){
+  try{closePop()}catch(e){}
+  $('sheet').hidden=false;
+  var d=$('taxCard').closest('details');if(d)d.open=true;
+  setTimeout(function(){$('taxCard').scrollIntoView({block:'start'})},80);
+};
+renderNet();
+
+/* 打刻の時刻入力:入力中は画面を作り直さない */
+var punchDirty=false,punchTimer=null;
+var _rpAnn=renderPunch;
+renderPunch=function(){
+  _rpAnn();
+  if(!sel)return;
+  var l=dayPats(sel).filter(function(p){return p.start&&p.end});
+  var cards=$('punchList').querySelectorAll('.pc');
+  for(var i=0;i<cards.length;i++){
+    var p=l[i];if(!p)continue;
+    var ins=cards[i].querySelectorAll('input[type=time]');
+    if(ins[0]){ins[0].setAttribute('data-k',sel+'|'+p.id);ins[0].setAttribute('data-f','in')}
+    if(ins[1]){ins[1].setAttribute('data-k',sel+'|'+p.id);ins[1].setAttribute('data-f','out')}
+  }
+};
+function schedulePunchCommit(){
+  clearTimeout(punchTimer);
+  punchTimer=setTimeout(function(){
+    var a=document.activeElement;
+    if(a&&$('punchList').contains(a)&&a.type==='time')return;
+    if(!punchDirty)return;
+    punchDirty=false;
+    renderPunch();renderSum();
+  },900);
+}
+var punchBox=$('punchList');
+punchBox.addEventListener('change',function(e){
+  var t=e.target;
+  if(!t||t.type!=='time'||!t.getAttribute('data-k'))return;
+  e.stopPropagation();
+  var k=t.getAttribute('data-k'),f=t.getAttribute('data-f');
+  var u=punches[k]||{'in':'',out:''};
+  u[f]=t.value;
+  if(!u['in']&&!u.out)delete punches[k];else punches[k]=u;
+  save();punchDirty=true;
+  schedulePunchCommit();
+},true);
+punchBox.addEventListener('focusin',function(){clearTimeout(punchTimer)},true);
+punchBox.addEventListener('focusout',function(){schedulePunchCommit()},true);
+renderPunch();
+/* ===== /アコーディオン化・時刻入力 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
