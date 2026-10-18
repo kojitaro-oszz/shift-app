@@ -376,5 +376,141 @@ renderToday=function(){
 var _rc=renderCal;
 renderCal=function(){_rc();renderToday()};
 /* ===== /今日の情報 拡張 ===== */
+/* ===== 第10段階:見た目の調整 ===== */
+var THEMES=[
+{id:'lav',name:'ラベンダー',dark:false,v:{m:'#6d5bd0',d:'#2f2a4a',bg:'#f4f2fb',wr:'238,234,250',cr:'255,255,255',soft:'#eeeafa',sel:'#d5ccf3',line:'#eee',bd:'#ccc',solid:'#ffffff',mut:'#666'}},
+{id:'sky',name:'ブルー',dark:false,v:{m:'#2f7fd6',d:'#1f3350',bg:'#eef5fc',wr:'222,236,250',cr:'255,255,255',soft:'#e3eefb',sel:'#bcd9f7',line:'#e6edf5',bd:'#c5d3e3',solid:'#ffffff',mut:'#5b6b80'}},
+{id:'sak',name:'ピンク',dark:false,v:{m:'#d6568a',d:'#4a2a38',bg:'#fcf1f5',wr:'250,230,238',cr:'255,255,255',soft:'#fbe6ee',sel:'#f6c6d8',line:'#f3e4ea',bd:'#e3c9d3',solid:'#ffffff',mut:'#7d6470'}},
+{id:'grn',name:'グリーン',dark:false,v:{m:'#2e8f6b',d:'#1f3d32',bg:'#eef8f2',wr:'222,243,231',cr:'255,255,255',soft:'#e0f3e8',sel:'#bfe6cf',line:'#e3f0e8',bd:'#c3d9cb',solid:'#ffffff',mut:'#5a7266'}},
+{id:'drk',name:'ダーク',dark:true,v:{m:'#a99bff',d:'#ece9ff',bg:'#17151f',wr:'36,32,54',cr:'38,35,56',soft:'#33304f',sel:'#4a4275',line:'#3d3957',bd:'#4a4666',solid:'#26233a',mut:'#b0abc8'}}];
+var FSZ=[['s','小',.9],['m','標準',1],['l','大',1.15],['x','特大',1.3]];
+var BSZ=[['s','小',.85],['m','標準',1],['l','大',1.2]];
+var LOOK_DEF={theme:'lav',cardT:10,fs:'m',bs:'m',blur:true};
+
+var _nsOld=nset;
+nset=function(o){
+  var s=_nsOld(o);
+  s.theme=LOOK_DEF.theme;s.cardT=LOOK_DEF.cardT;s.fs=LOOK_DEF.fs;s.bs=LOOK_DEF.bs;s.blur=LOOK_DEF.blur;
+  if(obj(o)){
+    if(THEMES.some(function(t){return t.id===o.theme}))s.theme=o.theme;
+    if(typeof o.cardT==='number'&&o.cardT>=0&&o.cardT<=80)s.cardT=Math.round(o.cardT);
+    if(FSZ.some(function(f){return f[0]===o.fs}))s.fs=o.fs;
+    if(BSZ.some(function(f){return f[0]===o.bs}))s.bs=o.bs;
+    if(o.blur===false)s.blur=false;
+  }
+  return s;
+};
+
+var lookCss=document.createElement('style');
+lookCss.textContent=`
+body{background:var(--bg);color:var(--d)}
+.wrap{background:rgba(var(--wr),var(--wa))}
+.card,.ac{background:rgba(var(--cr),var(--ca));-webkit-backdrop-filter:blur(var(--bl));backdrop-filter:blur(var(--bl))}
+.sheet{background:var(--bg);top:auto;height:62vh;padding-bottom:90px;border-radius:22px 22px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.3)}
+.sheet .card{background:var(--solid)}
+.gear{background:var(--solid)}
+.nav button,.fb.on,.bx{background:var(--soft)}
+.day.sel,#tabbar button.on{background:var(--sel)}
+body.idx #tabbar{background:rgba(var(--cr),.96)}
+#tabbar button{background:var(--solid)}
+#tabbar button.on{background:var(--sel)}
+body.idx .ac.pop,body.idx .ac.pop>summary{background:var(--solid)}
+.fb{background:var(--solid);border-color:var(--bd)}
+.small,.note,.tm,.sel-l,.bx span{color:var(--mut)}
+.ok{color:#0a7d3b}.ng{color:#c00}
+.dow{color:var(--mut)}
+.sun{color:#d33}.sat{color:#0a60d3}
+.ti,.td,.ev,.pc,.pcard,.sr,details.sub{border-color:var(--line)}
+h1{font-size:calc(22px*var(--fs))}
+h3,.ti,.lk,.note{font-size:calc(14px*var(--fs))}
+.td span,.tt,.ac>summary{font-size:calc(15px*var(--fs))}
+.sel-l,.tm,.st,.sr,.del{font-size:calc(13px*var(--fs))}
+.small,.dow{font-size:calc(12px*var(--fs))}
+.nm,.mk{font-size:calc(9px*var(--fs))}
+.bx b{font-size:calc(17px*var(--fs))}
+.bx span{font-size:calc(11px*var(--fs))}
+.day{font-size:calc(13px*var(--fs));min-height:calc(62px*var(--fs))}
+.chip,.fb,.btn{font-size:calc(14px*var(--fs))}
+.row input[type=text],.row input[type=number],.row select,textarea,.tf input[type=text],.evf input[type=text]{font-size:max(16px,calc(16px*var(--fs)))}
+.gear{font-size:calc(22px*var(--fs));width:calc(40px*var(--bs));height:calc(40px*var(--bs))}
+.nav button{font-size:calc(16px*var(--fs));padding:calc(6px*var(--bs)) calc(14px*var(--bs))}
+.chip{padding:calc(8px*var(--bs)) calc(12px*var(--bs))}
+.fb{padding:calc(8px*var(--bs)) calc(10px*var(--bs))}
+.btn{padding:calc(8px*var(--bs)) calc(14px*var(--bs))}
+.del{padding:calc(6px*var(--bs)) calc(10px*var(--bs))}
+.ac>summary{padding:calc(14px*var(--bs))}
+.td input{width:calc(22px*var(--bs));height:calc(22px*var(--bs))}
+#tabbar button{font-size:calc(11px*var(--fs));padding:calc(8px*var(--bs)) 0}
+#tabbar button b{font-size:calc(20px*var(--fs))}
+body.idx{padding-bottom:calc(90px*var(--bs)*var(--fs))}
+body.idx .ac.pop>.in{padding-bottom:calc(96px*var(--bs)*var(--fs))}
+body.dk{color-scheme:dark}
+body.dk input[type=text],body.dk input[type=number],body.dk input[type=time],body.dk select,body.dk textarea{background:var(--solid);color:var(--d);border-color:var(--bd)}
+body.dk textarea:disabled{background:var(--soft)}
+body.dk .btn{color:#1b1830}
+body.dk .btn.sub{background:var(--soft);color:var(--d)}
+body.dk .del{background:#4a2a35;color:#ff9aa8}
+body.dk .sun{color:#ff8a8a}
+body.dk .sat{color:#7db4ff}
+body.dk .ok{color:#6ee7a0}
+body.dk .ng{color:#ff8a8a}
+`;
+document.head.appendChild(lookCss);
+
+function applyLook(){
+  var th=THEMES[0];
+  THEMES.forEach(function(t){if(t.id===settings.theme)th=t});
+  var r=document.documentElement.style;
+  for(var k in th.v)r.setProperty('--'+k,th.v[k]);
+  var ca=1-settings.cardT/100;
+  r.setProperty('--ca',ca);
+  r.setProperty('--wa',Math.max(0,ca*.9).toFixed(2));
+  var fs=1,bs=1;
+  FSZ.forEach(function(f){if(f[0]===settings.fs)fs=f[2]});
+  BSZ.forEach(function(f){if(f[0]===settings.bs)bs=f[2]});
+  r.setProperty('--fs',fs);
+  r.setProperty('--bs',bs);
+  r.setProperty('--bl',settings.blur?'8px':'0px');
+  document.body.classList.toggle('dk',!!th.dark);
+}
+
+var lookCard=E('div',{className:'card',id:'lookCard'});
+$('sheet').querySelectorAll('.card')[0].after(lookCard);
+
+function optChips(list,isOn,setFn){
+  var box=E('div',{className:'chips'});
+  list.forEach(function(o){
+    box.appendChild(E('button',{className:'fb'+(isOn(o[0])?' on':''),text:o[1],onclick:function(){setFn(o[0]);save();applyLook();renderLook()}}));
+  });
+  return box;
+}
+function renderLook(){
+  var c=$('lookCard');c.innerHTML='';
+  c.appendChild(E('b',{text:'表示の調整'}));
+  c.appendChild(E('h3',{text:'カードの透け具合(カレンダー・各項目)'}));
+  var val=E('span',{style:'font-size:13px;width:40px;text-align:right',text:settings.cardT+'%'});
+  var sl=E('input',{type:'range',min:0,max:80,step:5,value:settings.cardT,style:'flex:1',oninput:function(){settings.cardT=+this.value;val.textContent=settings.cardT+'%';applyLook();save()}});
+  c.appendChild(E('div',{className:'row'},[sl,val]));
+  c.appendChild(E('p',{className:'small',text:'0%=透けない。大きいほど背景写真が見えます。'}));
+  c.appendChild(E('h3',{text:'ぼかし(透けても文字が読みやすくなります)'}));
+  c.appendChild(optChips([[true,'あり'],[false,'なし']],function(v){return settings.blur===v},function(v){settings.blur=v}));
+  c.appendChild(E('h3',{text:'テーマカラー'}));
+  var tb=E('div',{className:'chips'});
+  THEMES.forEach(function(t){
+    tb.appendChild(E('button',{className:'fb'+(settings.theme===t.id?' on':''),style:'border-left:10px solid '+t.v.m,text:t.name,onclick:function(){settings.theme=t.id;save();applyLook();renderLook()}}));
+  });
+  c.appendChild(tb);
+  c.appendChild(E('h3',{text:'文字の大きさ'}));
+  c.appendChild(optChips(FSZ.map(function(f){return[f[0],f[1]]}),function(v){return settings.fs===v},function(v){settings.fs=v}));
+  c.appendChild(E('h3',{text:'ボタンの大きさ'}));
+  c.appendChild(optChips(BSZ.map(function(f){return[f[0],f[1]]}),function(v){return settings.bs===v},function(v){settings.bs=v}));
+  c.appendChild(E('button',{className:'btn sub',style:'margin-top:12px',text:'表示の調整をもとに戻す',onclick:function(){
+    settings.theme=LOOK_DEF.theme;settings.cardT=LOOK_DEF.cardT;settings.fs=LOOK_DEF.fs;settings.bs=LOOK_DEF.bs;settings.blur=LOOK_DEF.blur;
+    save();applyLook();renderLook();
+  }}));
+}
+var _ral=renderAll;
+renderAll=function(){_ral();applyLook();renderLook()};
+/* ===== /第10段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
