@@ -1548,5 +1548,203 @@ punchBox.addEventListener('focusin',function(){clearTimeout(punchTimer)},true);
 punchBox.addEventListener('focusout',function(){schedulePunchCommit()},true);
 renderPunch();
 /* ===== /アコーディオン化・時刻入力 ===== */
+/* ===== 第18段階:料率データ(rates.json)と更新チェック ===== */
+var RATES_BUILTIN={version:'2026-10-18',
+  kenpo:[{from:'2026-03',to:'2027-02',care:1.62,pref:PREF}],
+  kodomo:[{from:'2026-04',to:'2027-03',rate:0.23}],
+  pension:[{from:'2017-09',to:'2027-08',rate:18.3,min:88000,max:650000}],
+  ei:[{from:'2026-04',to:'2027-03',gen:0.5,kou:0.6}],
+  gensen:[{from:'2026-01',to:'2026-12',zero:105000,dep:1610,basic:580000,
+    sal:[[1625000,0,650000],[1800000,0.4,-100000],[3600000,0.3,80000],[6600000,0.2,440000],[8500000,0.1,1100000],[null,0,1950000]],
+    high:[[740000,71680,0.2042],[790000,81890,0.23483],[960000,121820,0.33693],[1710000,374520,0.4084],[2130000,549440,0.4084],[2170000,571220,0.4084],[2210000,593000,0.4084],[2250000,614770,0.4084],[3500000,1125270,0.45945]],
+    otsu:{anchors:OTA,high:[[740000,259200,0.4084],[1710000,655400,0.45945]]}}]};
+var RATES=RATES_BUILTIN,RATES_SRC='アプリ内蔵',RATES_MSG='',RATE_WARN=[];
+var SECS=[['kenpo','健康保険・介護保険'],['kodomo','子ども・子育て支援金'],['pension','厚生年金'],['ei','雇用保険'],['gensen','源泉徴収税額表']];
+
+function okYm(s){return typeof s==='string'&&/^\d{4}-\d{2}$/.test(s)}
+function numIn(v,a,b){return typeof v==='number'&&isFinite(v)&&v>=a&&v<=b}
+function arrOf(a,n){return Array.isArray(a)&&a.length>0&&a.every(function(r){return Array.isArray(r)&&r.length===n})}
+function validRates(j){
+  try{
+    if(!obj(j)||typeof j.version!=='string')return false;
+    var ok=true;
+    SECS.forEach(function(s){
+      var a=j[s[0]];
+      if(!Array.isArray(a)||!a.length){ok=false;return}
+      a.forEach(function(r){if(!obj(r)||!okYm(r.from)||!okYm(r.to)||r.from>r.to)ok=false});
+    });
+    if(!ok)return false;
+    j.kenpo.forEach(function(r){if(!obj(r.pref)||!numIn(r.care,0,5))ok=false;for(var k in r.pref)if(!numIn(r.pref[k],5,15))ok=false});
+    j.kodomo.forEach(function(r){if(!numIn(r.rate,0,2))ok=false});
+    j.pension.forEach(function(r){if(!numIn(r.rate,10,25)||!numIn(r.min,10000,200000)||!numIn(r.max,200000,2000000))ok=false});
+    j.ei.forEach(function(r){if(!numIn(r.gen,0,3)||!numIn(r.kou,0,3))ok=false});
+    j.gensen.forEach(function(r){
+      if(!numIn(r.zero,50000,300000)||!numIn(r.dep,0,5000)||!numIn(r.basic,0,2000000)||!arrOf(r.sal,3)||!arrOf(r.high,3)||!obj(r.otsu)||!arrOf(r.otsu.anchors,2)||!arrOf(r.otsu.high,3))ok=false;
+    });
+    return ok;
+  }catch(e){return false}
+}
+function pickR(arr,key,optBefore){
+  var l=arr.slice().sort(function(a,b){return a.from<b.from?-1:a.from>b.from?1:0}),last=null,i;
+  for(i=0;i<l.length;i++){
+    if(key>=l[i].from&&key<=l[i].to)return {r:l[i],ok:true};
+    if(key>=l[i].from)last=l[i];
+  }
+  if(!last)return optBefore?{r:null,ok:true,none:true}:{r:l[0],ok:false};
+  return {r:last,ok:false};
+}
+function fmtYm(s){return s.slice(0,4)+'年'+(+s.slice(5,7))+'月'}
+function expiredNow(){
+  var t=ym(new Date()),o=[];
+  SECS.forEach(function(s){if(!pickR(RATES[s[0]],t,true).ok)o.push(s[1])});
+  return o;
+}
+function applyRates(j,src){
+  RATES=j;RATES_SRC=src;
+  var p=pickR(RATES.kenpo,ym(new Date())).r;
+  if(p&&p.pref)PREF=p.pref;
+}
+
+/* 源泉所得税(料率データから計算) */
+taxKo=function(X,N,g){
+  if(X<g.zero)return 0;
+  var t,hi=g.high,i;
+  if(X<hi[0][0]){
+    var S=X*12,ded=0;
+    for(i=0;i<g.sal.length;i++){var s=g.sal[i];if(s[0]===null||S<=s[0]){ded=S*s[1]+s[2];break}}
+    var Tt=Math.max(0,S-ded-g.basic);
+    var tax=Tt<=1950000?Tt*0.05:Tt<=3300000?Tt*0.1-97500:Tt<=6950000?Tt*0.2-427500:Tt<=9000000?Tt*0.23-636000:Tt<=18000000?Tt*0.33-1536000:Tt<=40000000?Tt*0.4-2796000:Tt*0.45-4796000;
+    t=Math.round(tax*1.021/12/10)*10;
+  }else{
+    var k=0;
+    for(i=hi.length-1;i>=0;i--){if(X>=hi[i][0]){k=i;break}}
+    t=hi[k][1]+(X-hi[k][0])*hi[k][2];
+  }
+  return Math.max(0,Math.floor(t)-g.dep*N);
+};
+taxOtsu=function(X,g){
+  if(X<g.zero)return Math.floor(X*0.03063);
+  var o=g.otsu,hi=o.high,an=o.anchors,i;
+  if(X>=hi[0][0]){
+    var k=0;
+    for(i=hi.length-1;i>=0;i--){if(X>=hi[i][0]){k=i;break}}
+    return Math.floor(hi[k][1]+(X-hi[k][0])*hi[k][2]);
+  }
+  for(i=an.length-1;i>=0;i--){
+    if(X>=an[i][0]){
+      var a=an[i],b=an[i+1]||a,t=b[0]>a[0]?(X-a[0])/(b[0]-a[0]):0;
+      return Math.round((a[1]+(b[1]-a[1])*t)/100)*100;
+    }
+  }
+  return 0;
+};
+
+/* 手取りの計算(月ごとに、その月の料率を使う) */
+netCalc=function(kind){
+  ensureJobs();
+  var key=ym(cur),out={jobs:[],g:0,ss:0,tax:0,net:0,resi:0};
+  var ken=pickR(RATES.kenpo,key),kod=pickR(RATES.kodomo,key,true),pen=pickR(RATES.pension,key),eiR=pickR(RATES.ei,key),gs=pickR(RATES.gensen,key);
+  monthGroups().forEach(function(x){
+    var g=kind==='act'?x.act:x.plan;
+    if(g<=0)return;
+    var c=TX.jobs[x.name]||{col:'otsu',ss:false,ei:false};
+    var o={name:x.name,g:g,health:0,care:0,kodomo:0,pension:0,ei:0,col:c.col};
+    if(c.ss){
+      var s=stdRem(g),ps=Math.min(pen.r.max,Math.max(pen.r.min,s));
+      var rate=TX.pref==='manual'?TX.manual:(ken.r.pref[TX.pref]||0);
+      o.health=r5(s*rate/200);
+      o.care=TX.care?r5(s*ken.r.care/200):0;
+      o.kodomo=kod.r?r5(s*kod.r.rate/200):0;
+      o.pension=r5(ps*pen.r.rate/100);
+    }
+    if(c.ei)o.ei=r5(g*(TX.ei>=0.6?eiR.r.kou:eiR.r.gen)/100);
+    o.ss=o.health+o.care+o.kodomo+o.pension+o.ei;
+    var X=g-o.ss;
+    o.tax=c.col==='ko'?taxKo(X,TX.deps,gs.r):taxOtsu(X,gs.r);
+    o.net=g-o.ss-o.tax;
+    out.jobs.push(o);out.g+=g;out.ss+=o.ss;out.tax+=o.tax;
+  });
+  out.resi=out.jobs.length?resiMonthly():0;
+  out.net=out.g-out.ss-out.tax-out.resi;
+  RATE_WARN=[];
+  if(out.jobs.length){
+    if(!ken.ok)RATE_WARN.push(SECS[0][1]);
+    if(!kod.ok)RATE_WARN.push(SECS[1][1]);
+    if(!pen.ok)RATE_WARN.push(SECS[2][1]);
+    if(!eiR.ok)RATE_WARN.push(SECS[3][1]);
+    if(!gs.ok)RATE_WARN.push(SECS[4][1]);
+  }
+  return out;
+};
+
+/* 手取り欄の警告 */
+var _rnR=renderNet;
+renderNet=function(){
+  RATE_WARN=[];
+  _rnR();
+  var b=$('netBody');if(!b)return;
+  var w=RATE_WARN.slice();
+  expiredNow().forEach(function(n){if(w.indexOf(n)<0)w.push(n)});
+  if(w.length)b.insertBefore(E('p',{className:'small ng',text:'⚠ 料率が古い可能性があります:'+w.join('・')+'。⚙︎ の「手取りの計算」→「料率データ」で確認してください。'}),b.children[1]||null);
+};
+
+/* 設定:料率データ */
+function fixEiLabels(){
+  var c=$('taxCard');if(!c)return;
+  var e=pickR(RATES.ei,ym(new Date())).r,bs=c.querySelectorAll('button'),i;
+  for(i=0;i<bs.length;i++){
+    var t=bs[i].textContent;
+    if(t.indexOf('一般(')===0)bs[i].textContent='一般('+e.gen+'%)';
+    else if(t.indexOf('農林水産')===0)bs[i].textContent='農林水産・清酒製造・建設('+e.kou+'%)';
+  }
+}
+function renderRatesStatus(){
+  var c=$('taxCard');if(!c)return;
+  var box=E('div',{style:'margin-top:12px;border-top:1px solid var(--line);padding-top:8px'});
+  box.appendChild(E('h3',{text:'料率データ',style:'margin-top:0'}));
+  box.appendChild(E('p',{className:'small',text:'版:'+RATES.version+'(読み込み元:'+RATES_SRC+')'}));
+  var t=ym(new Date());
+  SECS.forEach(function(s){
+    var p=pickR(RATES[s[0]],t,true),txt;
+    if(p.none)txt='まだ開始前';
+    else if(p.ok)txt=fmtYm(p.r.to)+'分まで有効';
+    else txt='⚠ 期限切れ('+fmtYm(p.r.to)+'分まで)';
+    box.appendChild(E('div',{className:'sr'},[E('span',{text:s[1]}),E('span',{className:p.ok?'':'ng',text:txt})]));
+  });
+  box.appendChild(E('button',{className:'btn sub',style:'margin-top:8px',text:'料率データを再読み込み',onclick:function(){fetchRates(true)}}));
+  if(RATES_MSG)box.appendChild(E('p',{className:'small',text:RATES_MSG}));
+  box.appendChild(E('p',{className:'small',text:'料率は rates.json で更新します(アプリのコードは変えません)。更新の時期はリマインダーでお知らせします。'}));
+  c.appendChild(box);
+}
+var _rtcR=renderTaxCard;
+renderTaxCard=function(){_rtcR();fixEiLabels();renderRatesStatus()};
+
+/* 読み込み */
+function fetchRates(manual){
+  RATES_MSG=manual?'確認中…':'';
+  if(manual)renderTaxCard();
+  fetch('rates.json'+(manual?'?'+Date.now():''),{cache:'no-cache'}).then(function(res){
+    if(!res.ok)throw new Error('http');
+    return res.json();
+  }).then(function(j){
+    if(!validRates(j)){RATES_MSG='rates.json の内容が正しくないため、今のデータを使います。';return}
+    if(j.version<RATES.version){RATES_MSG='rates.json は、今のデータより古い版です(版 '+j.version+')。';return}
+    try{localStorage.setItem('shift_rates',JSON.stringify(j))}catch(e){}
+    applyRates(j,'rates.json');
+    RATES_MSG='rates.json(版 '+j.version+')を読み込みました。';
+  })['catch'](function(){
+    RATES_MSG=manual?'rates.json を読み込めませんでした(ファイルがない、またはオフラインです)。':'';
+  }).then(function(){renderTaxCard();renderNet()});
+}
+(function(){
+  try{
+    var c=JSON.parse(localStorage.getItem('shift_rates')||'null');
+    if(c&&validRates(c)&&c.version>=RATES.version)applyRates(c,'保存済み(rates.json)');
+    else applyRates(RATES,RATES_SRC);
+  }catch(e){}
+})();
+fetchRates(false);
+renderTaxCard();renderNet();
+/* ===== /第18段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
