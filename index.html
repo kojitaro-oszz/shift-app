@@ -344,5 +344,37 @@ function go(id,key){
   if(settings.style==='idx'){openPop(id)}else{var d=$(id);d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}
 }
 /* ===== /スタイル② ===== */
+/* ===== 今日の情報 拡張 ===== */
+var tiCss=document.createElement('style');
+tiCss.textContent='.ti{gap:8px}.ti>span{flex:1;min-width:0;word-break:break-all}.ti .lk{flex-shrink:0}';
+document.head.appendChild(tiCss);
+(function(){
+  var card=$('tdS').closest('.card');
+  card.innerHTML='';
+  card.appendChild(E('b',{text:'今日の情報'}));
+  function row(icon,label,id,target){
+    var v=E('span',{id:id});
+    return E('div',{className:'ti'},[
+      E('span',{},[document.createTextNode(icon+' '+label+':'),v]),
+      E('button',{className:'lk',text:'確認',onclick:function(){go(target,tk())}})
+    ]);
+  }
+  card.appendChild(row('💼','今日のシフト','tdShift','ac-shift'));
+  card.appendChild(row('📅','今日の予定','tdEvent','ac-event'));
+  card.appendChild(row('☑️','未完了のToDo','tdTodo','ac-todo'));
+  card.appendChild(row('📝','今日のメモ','tdMemo','ac-memo'));
+})();
+renderToday=function(){
+  var t=tk(),ps=dayPats(t),ev=dayEvs(t);
+  var n=todos.filter(function(x){return !x.done&&(x.date===t||x.date==='')}).length;
+  $('tdShift').textContent=ps.length?ps.map(function(p){return plabel(p)+(p.start?' '+p.start+'-'+p.end:'')}).join(' / '):'なし';
+  $('tdEvent').textContent=ev.length?ev.map(function(e){return (e.start?e.start+' ':'')+e.title}).join(' / '):'なし';
+  $('tdTodo').textContent=n+'件';
+  var m=memos[t]?memos[t].replace(/\s+/g,' ').trim():'';
+  $('tdMemo').textContent=m?(m.length>20?m.slice(0,20)+'…':m):'なし';
+};
+var _rc=renderCal;
+renderCal=function(){_rc();renderToday()};
+/* ===== /今日の情報 拡張 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
