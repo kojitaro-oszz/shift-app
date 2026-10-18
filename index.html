@@ -797,5 +797,161 @@ var _rfB=refresh;
 refresh=function(){_rfB();renderBulk()};
 renderBulk();renderBar();
 /* ===== /第12段階 ===== */
+/* ===== 第13段階:一括削除・選択削除 ===== */
+var dCss=document.createElement('style');
+dCss.textContent='body.msel{padding-bottom:300px}.dbtn{background:#c62828!important;color:#fff!important}';
+document.head.appendChild(dCss);
+
+var delT={shift:false,event:false,memo:false,todo:false};
+var delDone=false,delNoDate=false,delTab='range',delFrom='',delTo='';
+var delMsg='',delOk=true,delUndo=null,msAction='input';
+function setDelRange(){var y=cur.getFullYear(),m=cur.getMonth();delFrom=dkey(new Date(y,m,1));delTo=dkey(new Date(y,m+1,0))}
+setDelRange();
+
+function planDelete(pred){
+  var r={sh:[],pu:[],mm:[],ev:[],td:[]};
+  if(delT.shift){
+    r.sh=Object.keys(shifts).filter(function(k){return pred(k)});
+    r.pu=Object.keys(punches).filter(function(k){return pred(k.split('|')[0])});
+  }
+  if(delT.memo)r.mm=Object.keys(memos).filter(function(k){return pred(k)});
+  if(delT.event)r.ev=events.filter(function(e){return pred(e.date)});
+  if(delT.todo)r.td=todos.filter(function(t){
+    var inS=t.date===''?delNoDate:pred(t.date);
+    return inS&&(!delDone||t.done);
+  });
+  return r;
+}
+function delTotal(p){return p.sh.length+p.mm.length+p.ev.length+p.td.length}
+function delLines(p){
+  var l=[];
+  if(delT.shift)l.push('シフト:'+p.sh.length+'日分(打刻 '+p.pu.length+'件)');
+  if(delT.event)l.push('予定:'+p.ev.length+'件');
+  if(delT.memo)l.push('メモ:'+p.mm.length+'件');
+  if(delT.todo)l.push('ToDo:'+p.td.length+'件');
+  return l;
+}
+function setDM(t,ok){delMsg=t;delOk=ok;renderDel();renderBar()}
+
+function runDelete(pred){
+  if(!(delT.shift||delT.event||delT.memo||delT.todo)){setDM('消す項目を選んでください。',false);return false}
+  var p=planDelete(pred);
+  if(!delTotal(p)){setDM('対象のデータがありません。',false);return false}
+  if(!confirm('次のデータを削除します。\n\n'+delLines(p).join('\n')+'\n\nよろしいですか?\n(削除直後なら「取り消し」で戻せます)'))return false;
+  var u={sh:{},pu:{},mm:{},ev:p.ev.slice(),td:p.td.slice()};
+  p.sh.forEach(function(k){u.sh[k]=shifts[k];delete shifts[k]});
+  p.pu.forEach(function(k){u.pu[k]=punches[k];delete punches[k]});
+  p.mm.forEach(function(k){u.mm[k]=memos[k];delete memos[k]});
+  events=events.filter(function(e){return p.ev.indexOf(e)<0});
+  todos=todos.filter(function(t){return p.td.indexOf(t)<0});
+  delUndo=u;save();
+  delMsg=delTotal(p)+'件を削除しました。';delOk=true;
+  renderAll();renderBar();
+  return true;
+}
+function undoDelete(){
+  var u=delUndo;if(!u)return;
+  var k;
+  for(k in u.sh){var now=shifts[k]||[];shifts[k]=now.concat(u.sh[k].filter(function(x){return now.indexOf(x)<0}))}
+  for(k in u.pu)punches[k]=u.pu[k];
+  for(k in u.mm){if(!memos[k])memos[k]=u.mm[k]}
+  u.ev.forEach(function(e){events.push(e)});
+  u.td.forEach(function(t){todos.push(t)});
+  delUndo=null;save();
+  delMsg='削除を取り消しました。';delOk=true;
+  renderAll();renderBar();
+}
+
+function delChips(){
+  var box=E('div',{className:'chips'});
+  [['shift','シフト(打刻も)'],['event','予定'],['memo','メモ'],['todo','ToDo']].forEach(function(o){
+    box.appendChild(E('button',{className:'fb sm'+(delT[o[0]]?' on':''),text:o[1],onclick:function(){delT[o[0]]=!delT[o[0]];renderDel();renderBar()}}));
+  });
+  if(delT.todo){
+    box.appendChild(E('button',{className:'fb sm'+(delDone?' on':''),text:'ToDoは完了済みのみ',onclick:function(){delDone=!delDone;renderDel();renderBar()}}));
+    box.appendChild(E('button',{className:'fb sm'+(delNoDate?' on':''),text:'日付なしのToDoも',onclick:function(){delNoDate=!delNoDate;renderDel();renderBar()}}));
+  }
+  return box;
+}
+function rangePred(){
+  var re=/^\d{4}-\d{2}-\d{2}$/;
+  if(!re.test(delFrom)||!re.test(delTo))return{err:'開始日と終了日を入れてください。'};
+  if(delFrom>delTo)return{err:'終了日は開始日より後にしてください。'};
+  return{pred:function(d){return d>=delFrom&&d<=delTo}};
+}
+function updDelPrev(){
+  var el=$('delPrev');if(!el)return;
+  var r=rangePred();
+  if(r.err){el.textContent=r.err;return}
+  var l=delLines(planDelete(r.pred));
+  el.textContent=l.length?'対象:'+l.join(' / '):'消す項目を選んでください。';
+}
+
+var delCard=E('div',{className:'card',id:'delCard'});
+(function(){var cs=$('sheet').querySelectorAll('.card');cs[cs.length-1].before(delCard)})();
+
+function renderDel(){
+  var c=$('delCard');c.innerHTML='';
+  c.appendChild(E('b',{text:'一括削除・選択削除'}));
+  c.appendChild(E('h3',{text:'① 消す項目'}));
+  c.appendChild(delChips());
+  c.appendChild(E('h3',{text:'② 日付の選び方'}));
+  c.appendChild(E('div',{className:'chips'},[['range','期間'],['pick','カレンダーで選ぶ']].map(function(o){
+    return E('button',{className:'fb sm'+(delTab===o[0]?' on':''),text:o[1],onclick:function(){delTab=o[0];delMsg='';renderDel()}});
+  })));
+  if(delTab==='range'){
+    c.appendChild(E('div',{className:'bulk'},[
+      E('div',{className:'row',style:'flex-wrap:wrap;margin-top:8px'},[
+        E('input',{type:'date',value:delFrom,onchange:function(){delFrom=this.value;updDelPrev()}}),
+        E('span',{text:'〜'}),
+        E('input',{type:'date',value:delTo,onchange:function(){delTo=this.value;updDelPrev()}})])]));
+    c.appendChild(E('button',{className:'btn sub',text:'表示中の月にする',onclick:function(){setDelRange();renderDel()}}));
+    c.appendChild(E('p',{className:'small',id:'delPrev'}));
+    c.appendChild(E('button',{className:'btn dbtn',text:'この期間のデータを削除',onclick:function(){
+      var r=rangePred();if(r.err){setDM(r.err,false);return}runDelete(r.pred);
+    }}));
+  }else{
+    c.appendChild(E('p',{className:'small',text:'設定を閉じて、カレンダーの日付をタップして選びます。画面下のバーの赤い「削除」で実行します。月を切り替えても、選んだ日は残ります。'}));
+    c.appendChild(E('button',{className:'btn',text:'選択モードを始める',onclick:startDelSel}));
+  }
+  if(delUndo)c.appendChild(E('div',{},[E('button',{className:'btn sub',style:'margin-top:10px',text:'直前の削除を取り消す',onclick:undoDelete})]));
+  if(delMsg)c.appendChild(E('p',{className:'small '+(delOk?'ok':'ng'),text:delMsg}));
+  updDelPrev();
+}
+
+/* カレンダーで選んで削除(選択モード) */
+function startDelSel(){
+  delMsg='';msAction='del';
+  $('sheet').hidden=true;
+  startMsel();
+}
+var _emD=endMsel;
+endMsel=function(){msAction='input';_emD()};
+var _rbD=renderBar;
+renderBar=function(){
+  if(msAction!=='del'){_rbD();return}
+  mbar.innerHTML='';
+  var n=Object.keys(msel).length;
+  mbar.appendChild(E('div',{style:'display:flex;justify-content:space-between;align-items:center'},[
+    E('b',{text:'削除する日を選択中:'+n+'日'}),
+    E('button',{className:'lk',text:'全解除',onclick:function(){msel={};renderCal();renderBar()}})]));
+  mbar.appendChild(delChips());
+  var row=E('div',{className:'chips',style:'align-items:center;margin-top:6px'},[
+    E('button',{className:'btn dbtn',style:'margin:0',text:'削除',onclick:function(){
+      var ks=Object.keys(msel);
+      if(!ks.length&&!(delT.todo&&delNoDate)){setDM('日付をタップして選んでください。',false);return}
+      var set={};ks.forEach(function(k){set[k]=1});
+      if(runDelete(function(d){return !!set[d]})){msel={};renderCal();renderBar()}
+    }})]);
+  if(delUndo)row.appendChild(E('button',{className:'btn sub',style:'margin:0',text:'取り消し',onclick:undoDelete}));
+  row.appendChild(E('button',{className:'btn sub',style:'margin:0',text:'終了',onclick:endMsel}));
+  mbar.appendChild(row);
+  if(delMsg)mbar.appendChild(E('p',{className:'small '+(delOk?'ok':'ng'),text:delMsg}));
+};
+
+var _raD=renderAll;
+renderAll=function(){_raD();renderDel()};
+renderDel();
+/* ===== /第13段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
