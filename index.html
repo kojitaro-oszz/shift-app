@@ -1001,5 +1001,220 @@ window.addEventListener('resize',setTbh);
 setTbh();
 renderToday();
 /* ===== /第14段階 ===== */
+/* ===== 第15段階:アニメーション ===== */
+var anCss=document.createElement('style');
+anCss.textContent=`
+@keyframes fxUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes fxFade{from{opacity:0}to{opacity:1}}
+@keyframes fxDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes fxInR{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes fxInL{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+@keyframes fxEnter{from{opacity:0;transform:translateY(-8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes fxLeave{from{opacity:1;max-height:160px}to{opacity:0;transform:translateX(24px);max-height:0;padding-top:0;padding-bottom:0}}
+@keyframes fxBounce{0%{transform:scale(1)}35%{transform:scale(1.5)}65%{transform:scale(.9)}100%{transform:scale(1)}}
+@keyframes fxGlow{0%,100%{box-shadow:0 0 0 0 var(--m)}50%{box-shadow:0 0 9px 2px var(--m)}}
+@keyframes fxPop{0%{transform:scale(.88)}60%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes fxStamp{0%{background:transparent}30%{background:rgba(46,160,90,.35)}100%{background:transparent}}
+@keyframes fxSpark{from{opacity:1;transform:translate(0,0) scale(1)}to{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3)}}
+@keyframes fxConf{from{opacity:1;transform:translate(0,0) rotate(0)}to{opacity:0;transform:translate(var(--cx),var(--cy)) rotate(var(--cr))}}
+@keyframes fxToast{0%{opacity:0;transform:translate(-50%,10px)}12%{opacity:1;transform:translate(-50%,0)}85%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-6px)}}
+#fxToast{position:fixed;left:50%;bottom:calc(var(--tbh,92px) + 14px);transform:translate(-50%,0);opacity:0;max-width:88vw;text-align:center;line-height:1.4;background:rgba(30,28,45,.92);color:#fff;padding:9px 16px;border-radius:20px;font-size:calc(13px*var(--fs));z-index:30;pointer-events:none}
+#fxToast.show{animation:fxToast 2s ease forwards}
+#fxLayer{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:40;overflow:hidden}
+.fxsp{position:absolute;width:7px;height:7px;border-radius:50%;margin:-3px 0 0 -3px;animation:fxSpark .65s ease-out forwards}
+.fxcf{position:absolute;top:28%;width:8px;height:12px;border-radius:2px;animation:fxConf 1.4s ease-in forwards}
+body.fx-move #sheet:not([hidden]){animation:fxUp .28s ease-out}
+body.fx-move.idx .ac.pop{animation:fxUp .28s ease-out}
+body.fx-move.idx.popup #dim{animation:fxFade .25s}
+body.fx-move .ac[open]>.in,body.fx-move details.sub[open]>*:not(summary){animation:fxDown .25s ease-out}
+body.fx-move.idx .ac.pop>.in{animation:none}
+body.fx-move #grid.slR{animation:fxInR .28s ease-out}
+body.fx-move #grid.slL{animation:fxInL .28s ease-out}
+body.fx-todo .td.fxp input[type=checkbox]{animation:fxBounce .45s ease-out}
+body.fx-todo .td.fxp span{animation:fxFade .4s}
+body.fx-list .td.fxe,body.fx-list .ev.fxe{animation:fxEnter .3s ease-out}
+body.fx-list .td.fxl,body.fx-list .ev.fxl{overflow:hidden;animation:fxLeave .2s ease-in forwards}
+body.fx-small .day.today{animation:fxGlow 2.6s ease-in-out infinite}
+body.fx-small .day.sel{animation:fxPop .25s ease-out}
+body.fx-small .day.today.sel{animation:fxPop .25s ease-out,fxGlow 2.6s ease-in-out .25s infinite}
+body.fx-small.msel .day{animation:none!important}
+body.fx-small .pc .row.fxs{animation:fxStamp .9s ease-out;border-radius:10px}
+body.fx-small .btn,body.fx-small .chip,body.fx-small .fb,body.fx-small .dchip,body.fx-small .lk,body.fx-small .gear,body.fx-small .nav button,body.fx-small #tabbar button{transition:transform .12s}
+body.fx-small .btn:active,body.fx-small .chip:active,body.fx-small .fb:active,body.fx-small .dchip:active,body.fx-small .lk:active,body.fx-small .gear:active,body.fx-small .nav button:active,body.fx-small #tabbar button:active{transform:scale(.94)}
+`;
+document.head.appendChild(anCss);
+
+var COLS=['#ffd34d','#ff7aa8','#7ad0ff','#8be28b','#c39bff'];
+var FXK=['todo','move','list','small'];
+var reduceMQ=null;try{reduceMQ=window.matchMedia('(prefers-reduced-motion: reduce)')}catch(e){}
+function reduced(){return !!(reduceMQ&&reduceMQ.matches)}
+function fxs(){if(!settings.fx)settings.fx={todo:true,move:true,list:true,small:true};return settings.fx}
+function applyFx(){var f=fxs();FXK.forEach(function(k){document.body.classList.toggle('fx-'+k,f[k]!==false&&!reduced())})}
+function fxOn(k){return document.body.classList.contains('fx-'+k)}
+var _nsFx=nset;
+nset=function(o){
+  var s=_nsFx(o);
+  s.fx={todo:true,move:true,list:true,small:true};
+  if(obj(o)&&obj(o.fx))FXK.forEach(function(k){if(o.fx[k]===false)s.fx[k]=false});
+  return s;
+};
+
+var layer=E('div',{id:'fxLayer'}),toastEl=E('div',{id:'fxToast'});
+document.body.appendChild(layer);document.body.appendChild(toastEl);
+
+function showToast(text,cat){
+  if(!fxOn(cat))return;
+  toastEl.textContent=text;
+  toastEl.classList.remove('show');void toastEl.offsetWidth;toastEl.classList.add('show');
+}
+function sparkle(x,y){
+  for(var i=0;i<10;i++){
+    var a=Math.PI*2*i/10+Math.random()*.4,dist=26+Math.random()*22,s=E('i',{className:'fxsp'});
+    s.style.cssText='left:'+x+'px;top:'+y+'px;background:'+COLS[i%COLS.length]+';--dx:'+Math.round(Math.cos(a)*dist)+'px;--dy:'+Math.round(Math.sin(a)*dist)+'px';
+    layer.appendChild(s);
+    (function(el){setTimeout(function(){el.remove()},800)})(s);
+  }
+}
+function confetti(){
+  for(var i=0;i<24;i++){
+    var p=E('i',{className:'fxcf'});
+    p.style.cssText='left:'+(10+Math.random()*80)+'%;background:'+COLS[i%COLS.length]+';--cy:'+Math.round(260+Math.random()*180)+'px;--cx:'+Math.round((Math.random()-.5)*120)+'px;--cr:'+Math.round((Math.random()-.5)*900)+'deg;animation-delay:'+(Math.random()*.25).toFixed(2)+'s';
+    layer.appendChild(p);
+    (function(el){setTimeout(function(){el.remove()},1900)})(p);
+  }
+}
+function celebrate(key){
+  confetti();
+  showToast((key===tk()?'今日':key===''?'日付なし':'この日')+'のToDoが全部終わりました。お疲れさま!🎉','todo');
+}
+
+/* ToDo完了 */
+$('todoList').addEventListener('change',function(e){
+  var cb=e.target;
+  if(!cb||cb.type!=='checkbox')return;
+  var list=$('todoList'),item=cb.closest('.td'),idx=Array.prototype.indexOf.call(list.children,item);
+  var r=cb.getBoundingClientRect(),on=cb.checked,key=sel||'';
+  setTimeout(function(){
+    if(!on||!fxOn('todo'))return;
+    var it=list.children[idx];
+    if(it)it.classList.add('fxp');
+    sparkle(r.left+r.width/2,r.top+r.height/2);
+    var l=todos.filter(function(t){return t.date===key});
+    if(l.length&&l.every(function(t){return t.done}))celebrate(key);
+  },0);
+},true);
+
+/* 追加したときの動き */
+var lastTd={key:null,ids:[]},lastEv={key:null,ids:[]};
+var _rtF=renderTodos;
+renderTodos=function(){
+  _rtF();
+  var key=sel||'',l=todos.filter(function(t){return t.date===key}),box=$('todoList');
+  if(lastTd.key===key&&fxOn('list')){
+    l.forEach(function(t,i){if(lastTd.ids.indexOf(t.id)<0&&box.children[i])box.children[i].classList.add('fxe')});
+  }
+  lastTd={key:key,ids:l.map(function(t){return t.id})};
+};
+var _reF=renderEvs;
+renderEvs=function(){
+  _reF();
+  var key=sel||'',l=sel?dayEvs(sel):[],box=$('eventList');
+  if(lastEv.key===key&&fxOn('list')){
+    l.forEach(function(t,i){if(lastEv.ids.indexOf(t.id)<0&&box.children[i])box.children[i].classList.add('fxe')});
+  }
+  lastEv={key:key,ids:l.map(function(t){return t.id})};
+};
+
+/* 削除したときの動き */
+function leaveHook(box,itemSel){
+  box.addEventListener('click',function(e){
+    var b=e.target.closest?e.target.closest('.del'):null;
+    if(!b||!box.contains(b))return;
+    if(b._go){b._go=false;return}
+    if(!fxOn('list'))return;
+    var it=b.closest(itemSel);
+    if(!it)return;
+    e.stopPropagation();e.preventDefault();
+    if(it.classList.contains('fxl'))return;
+    it.classList.add('fxl');
+    setTimeout(function(){b._go=true;b.click()},200);
+  },true);
+}
+leaveHook($('todoList'),'.td');
+leaveHook($('eventList'),'.ev');
+
+/* 小さな通知 */
+function snap(){return{td:todos.length,ev:events.length,pt:patterns.length}}
+function watchChange(){
+  var s0=snap();
+  setTimeout(function(){
+    var s1=snap(),names={td:'ToDo',ev:'予定',pt:'シフトの種類'},parts=[];
+    ['td','ev','pt'].forEach(function(k){var d=s1[k]-s0[k];if(d)parts.push({k:k,d:d})});
+    if(parts.length===1){
+      var p=parts[0],n=Math.abs(p.d);
+      showToast(names[p.k]+(n>1?n+'件':'')+'を'+(p.d>0?'追加':'削除')+'しました','list');
+    }else if(parts.length>1){showToast('データを更新しました','list')}
+  },0);
+}
+function watchPunch(b){
+  var pl=$('punchList'),card=b.closest('.pc'),ci=Array.prototype.indexOf.call(pl.children,card);
+  var ri=Array.prototype.indexOf.call(card.querySelectorAll('.row'),b.closest('.row'));
+  var label=b.textContent,before=JSON.stringify(punches);
+  setTimeout(function(){
+    if(JSON.stringify(punches)===before)return;
+    var c=pl.children[ci];
+    if(c&&fxOn('small')){var rr=c.querySelectorAll('.row')[ri];if(rr)rr.classList.add('fxs')}
+    showToast(label+'を記録しました('+nowHM()+')','small');
+  },0);
+}
+document.addEventListener('click',function(e){
+  var t=e.target,b=t&&t.closest?t.closest('button'):null;
+  if(!b)return;
+  watchChange();
+  if($('punchList').contains(b)&&!b.disabled&&(b.textContent==='出勤'||b.textContent==='退勤'))watchPunch(b);
+},true);
+document.addEventListener('keydown',function(e){
+  if(e.target&&e.target.id==='todoInput'&&e.key==='Enter')watchChange();
+},true);
+var memoTm=null;
+$('memoText').addEventListener('input',function(){
+  clearTimeout(memoTm);
+  memoTm=setTimeout(function(){showToast('メモを保存しました','list')},1200);
+});
+
+/* 月の切り替え */
+var _chmF=chm;
+chm=function(d){
+  _chmF(d);
+  if(!fxOn('move'))return;
+  var g=$('grid');
+  g.classList.remove('slR','slL');void g.offsetWidth;
+  g.classList.add(d>0?'slR':'slL');
+};
+
+/* 設定:アニメーション */
+var fxCard=E('div',{className:'card',id:'fxCard'});
+$('lookCard').after(fxCard);
+var FXN=[['todo','ToDo完了(✓が弾む・きらきら・お疲れさま)'],['move','画面の動き(開く・折りたたみ・月の切り替え)'],['list','追加・削除の動きと小さな通知'],['small','小さな演出(打刻・今日の光・日付選択・ボタン)']];
+function setAllFx(v){FXN.forEach(function(o){fxs()[o[0]]=v});save();applyFx();renderFxCard()}
+function renderFxCard(){
+  var c=$('fxCard');c.innerHTML='';
+  c.appendChild(E('b',{text:'アニメーション'}));
+  if(reduced())c.appendChild(E('p',{className:'small ng',text:'iPhoneの「動きを減らす」がONのため、アニメーションは表示されません。(設定 → アクセシビリティ → 動作)'}));
+  var box=E('div',{className:'chips',style:'margin-top:8px'});
+  FXN.forEach(function(o){
+    var on=fxs()[o[0]]!==false;
+    box.appendChild(E('button',{className:'fb sm'+(on?' on':''),text:(on?'ON ':'OFF ')+o[1],onclick:function(){fxs()[o[0]]=!on;save();applyFx();renderFxCard()}}));
+  });
+  c.appendChild(box);
+  c.appendChild(E('div',{className:'chips',style:'margin-top:8px'},[
+    E('button',{className:'btn sub',text:'すべてON',onclick:function(){setAllFx(true)}}),
+    E('button',{className:'btn sub',text:'すべてOFF',onclick:function(){setAllFx(false)}})]));
+}
+var _raFx=renderAll;
+renderAll=function(){_raFx();applyFx();renderFxCard()};
+if(reduceMQ&&reduceMQ.addEventListener)reduceMQ.addEventListener('change',function(){applyFx();renderFxCard()});
+applyFx();renderFxCard();
+/* ===== /第15段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
