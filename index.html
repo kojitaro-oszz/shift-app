@@ -1746,5 +1746,153 @@ function fetchRates(manual){
 fetchRates(false);
 renderTaxCard();renderNet();
 /* ===== /第18段階 ===== */
+/* ===== 第19段階:予定のスタンプ ===== */
+var stCss=document.createElement('style');
+stCss.textContent=`
+.stp{--sz:20px;--sc:#999;position:relative;display:inline-block;width:var(--sz);height:var(--sz);flex-shrink:0;vertical-align:middle;background-color:var(--sc);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.stp.sq{border-radius:28%}
+.stp.circle{border-radius:50%}
+.stp.hex{clip-path:polygon(25% 4%,75% 4%,100% 50%,75% 96%,25% 96%,0 50%);box-shadow:none}
+.stp.diamond{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);box-shadow:none}
+.stp.p-stripe{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.35) 0 2px,transparent 2px 5px)}
+.stp.p-hstripe{background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.35) 0 2px,transparent 2px 5px)}
+.stp.p-vstripe{background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.35) 0 2px,transparent 2px 5px)}
+.stp.p-dots{background-image:radial-gradient(circle,rgba(255,255,255,.55) 1.2px,transparent 1.8px);background-size:5px 5px}
+.stp.p-check{background-image:conic-gradient(rgba(255,255,255,.35) 25%,transparent 0 50%,rgba(255,255,255,.35) 0 75%,transparent 0);background-size:8px 8px}
+.stp.p-grid{background-image:linear-gradient(rgba(255,255,255,.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.4) 1px,transparent 1px);background-size:5px 5px}
+.stp.p-ring{background-image:repeating-radial-gradient(circle,rgba(255,255,255,.4) 0 2px,transparent 2px 5px)}
+.stp.p-cross{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.3) 0 1.5px,transparent 1.5px 5px),repeating-linear-gradient(-45deg,rgba(255,255,255,.3) 0 1.5px,transparent 1.5px 5px)}
+.stp>b{position:absolute;left:50%;top:50%;width:66%;height:66%;transform:translate(-50%,-50%);border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:normal;font-style:normal;font-size:calc(var(--sz)*.44);line-height:1}
+.stp.diamond>b{width:50%;height:50%;font-size:calc(var(--sz)*.32)}
+.stp.hex>b{width:62%;height:62%}
+.stp.sm>b{width:86%;height:86%;font-size:calc(var(--sz)*.55)}
+.stp.sm.diamond>b{width:62%;height:62%;font-size:calc(var(--sz)*.4)}
+.strow{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin-top:2px}
+.stgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.stbtn{border:none;background:none;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:calc(10px*var(--fs));color:var(--d);line-height:1.2;text-align:center}
+.stbtn:disabled{opacity:.35}
+.stbtn:active{transform:scale(.92)}
+`;
+document.head.appendChild(stCss);
+
+var STAMP_LIST=[
+{id:'work',name:'仕事',emoji:'💼',color:'#2563eb',pat:'stripe',shape:'sq'},
+{id:'meal',name:'食事',emoji:'🍽️',color:'#f97316',pat:'dots',shape:'circle'},
+{id:'out',name:'おでかけ',emoji:'🚃',color:'#16a34a',pat:'check',shape:'hex'},
+{id:'pay',name:'給料日',emoji:'💰',color:'#eab308',pat:'ring',shape:'circle'},
+{id:'hosp',name:'通院',emoji:'🏥',color:'#dc2626',pat:'cross',shape:'diamond'},
+{id:'shop',name:'買い物',emoji:'🛍️',color:'#ec4899',pat:'grid',shape:'sq'},
+{id:'friend',name:'友達・デート',emoji:'💕',color:'#8b5cf6',pat:'hstripe',shape:'circle'},
+{id:'study',name:'勉強',emoji:'📚',color:'#8b5e34',pat:'vstripe',shape:'hex'},
+{id:'sport',name:'運動',emoji:'🏃',color:'#0891b2',pat:'dots',shape:'hex'},
+{id:'anniv',name:'記念日',emoji:'🎂',color:'#84cc16',pat:'check',shape:'circle'}];
+var STAMPS={};
+STAMP_LIST.forEach(function(s){STAMPS[s.id]=s});
+
+function stampEl(id,sz){
+  var s=STAMPS[id];
+  var e=E('span',{className:'stp '+s.shape+' p-'+s.pat+(sz<=20?' sm':'')});
+  e.style.setProperty('--sz',sz+'px');
+  e.style.setProperty('--sc',s.color);
+  e.appendChild(E('b',{text:s.emoji}));
+  return e;
+}
+
+/* スタンプの情報を、保存・復元・バックアップで消さない */
+var _neS=ne;
+ne=function(a){
+  var r=_neS(a);
+  if(Array.isArray(a)){
+    var src=a.filter(function(e){return e&&typeof e.date==='string'&&typeof e.title==='string'});
+    r.forEach(function(e,i){
+      var s=src[i]&&src[i].stamp;
+      if(typeof s==='string'&&STAMPS[s])e.stamp=s;
+    });
+  }
+  return r;
+};
+
+/* スタンプで予定を入力 */
+function addStamp(id){
+  if(!sel)return;
+  var st=STAMPS[id],t=$('evTitle');
+  events.push({
+    id:'e'+Date.now()+Math.floor(Math.random()*1000),
+    date:sel,
+    title:t.value.trim()||st.name,
+    start:$('evStart').value,
+    end:$('evEnd').value,
+    color:st.color,
+    stamp:id
+  });
+  t.value='';
+  save();
+  renderCal();
+  renderEvs();
+  renderToday();
+}
+var stampBox=E('div',{id:'stampBox',style:'margin-bottom:10px'});
+stampBox.appendChild(E('h3',{text:'スタンプで入力',style:'margin-top:0'}));
+stampBox.appendChild(E('p',{className:'small',text:'日付を選んで、スタンプをタップすると、すぐに予定が入ります。先に下のタイトルや時間を入れておくと、それも使われます。'}));
+var stGrid=E('div',{className:'stgrid'});
+STAMP_LIST.forEach(function(s){
+  stGrid.appendChild(E('button',{className:'stbtn',disabled:true,onclick:function(){addStamp(s.id)}},[stampEl(s.id,38),E('span',{text:s.name})]));
+});
+stampBox.appendChild(stGrid);
+$('ac-event').querySelector('.evf').before(stampBox);
+
+/* 予定の一覧:スタンプの絵を表示 */
+var _reSt=renderEvs;
+renderEvs=function(){
+  _reSt();
+  var bs=$('stampBox').querySelectorAll('.stbtn'),i;
+  for(i=0;i<bs.length;i++)bs[i].disabled=!sel;
+  if(!sel)return;
+  var evs=dayEvs(sel),l=$('eventList').children;
+  for(i=0;i<evs.length&&i<l.length;i++){
+    if(evs[i].stamp&&STAMPS[evs[i].stamp]){
+      var d=l[i].querySelector('.dt');
+      if(d)d.replaceWith(stampEl(evs[i].stamp,26));
+    }
+  }
+};
+
+/* カレンダー:スタンプをそのデザインのまま表示 */
+var _rcSt=renderCal;
+renderCal=function(){
+  _rcSt();
+  var g=$('grid');if(!g)return;
+  var y=cur.getFullYear(),m=cur.getMonth(),f=new Date(y,m,1).getDay(),L=new Date(y,m+1,0).getDate();
+  for(var d=1;d<=L;d++){
+    var key=y+'-'+pad(m+1)+'-'+pad(d),evs=dayEvs(key);
+    if(!evs.length)continue;
+    var c=g.children[7+f+d-1];if(!c)continue;
+    var st=evs.filter(function(e){return e.stamp&&STAMPS[e.stamp]}),other=evs.length-st.length;
+    var mk=c.querySelector('.mk');
+    if(mk){
+      mk.innerHTML='';
+      if(other)mk.appendChild(E('i',{className:'dt',style:'background:#8b5cf6'}));
+      if(openTodo(key))mk.appendChild(E('i',{className:'dt',style:'background:#0a84ff'}));
+      if(memos[key])mk.appendChild(E('span',{text:'📝'}));
+    }
+    if(st.length){
+      var n=st.length,sz=n===1?30:17,row=E('div',{className:'strow'});
+      st.slice(0,4).forEach(function(e){row.appendChild(stampEl(e.stamp,sz))});
+      if(n>4)row.appendChild(E('span',{style:'font-size:9px;color:var(--mut)',text:'+'+(n-4)}));
+      if(mk)c.insertBefore(row,mk);else c.appendChild(row);
+    }
+  }
+};
+
+/* 今日の情報の予定:絵文字を付ける */
+var _rtSt=renderToday;
+renderToday=function(){
+  _rtSt();
+  var ev=dayEvs(infoKey());
+  if(ev.length)$('tdEvent').textContent=ev.map(function(e){
+    return (e.stamp&&STAMPS[e.stamp]?STAMPS[e.stamp].emoji+' ':'')+(e.start?e.start+' ':'')+e.title;
+  }).join(' / ');
+};
+/* ===== /第19段階 ===== */
 load();renderAll();openDB(applyBg);
 </script></body></html>
